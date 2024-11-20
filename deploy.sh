@@ -14,9 +14,19 @@ EDGEDB_HOST=edgedb
 EDGEDB_PORT=5656
 EDGEDB_TLS_SECURITY=strict
 EDGEDB_DSN=edgedb://${EDGEDB_USER}:${EDGEDB_PASSWORD}@${EDGEDB_HOST}:${EDGEDB_PORT}/${EDGEDB_DATABASE}?tls_security=${EDGEDB_TLS_SECURITY}
+DOMAIN_NAME="" # Add your own
+EMAIL=""       # Add your own
 
-read -p "Enter your domain name (e.g., example.com): " DOMAIN_NAME
-read -p "Enter your email address for SSL certificate registration: " EMAIL
+# Verify that DOMAIN_NAME and EMAIL are set
+if [ -z "$DOMAIN_NAME" ]; then
+  echo "Error: DOMAIN_NAME is not set. Please set your domain name in the script."
+  exit 1
+fi
+
+if [ -z "$EMAIL" ]; then
+  echo "Error: EMAIL is not set. Please set your email address in the script."
+  exit 1
+fi
 
 # Script Vars
 REPO_URL="https://github.com/tofupilot/on-premise.git"
