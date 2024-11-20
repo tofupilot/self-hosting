@@ -1,6 +1,6 @@
 # TofuPilot Self Hosting Repository
 
-Welcome to the TofuPilot On-Premise Deployment Guide. This repository provides everything you need to deploy an on-premise version of [TofuPilot]("https://www.tofupilot.com"), exclusively available for our Enterprise plan clients.
+Welcome to the TofuPilot On-Premise Deployment Guide. This repository provides everything you need to deploy an on-premise version of [TofuPilot](https://www.tofupilot.com), exclusively available for our Enterprise plan clients.
 
 ## Prerequisites
 
@@ -13,31 +13,32 @@ Welcome to the TofuPilot On-Premise Deployment Guide. This repository provides e
 ## System Requirements
 
 Ensure your server meets the following minimum requirements:
-• **Operating System**: Ubuntu 20.04 LTS or later (64-bit)
-• **CPU**: 2 cores or more
-• **RAM**: 4 GB minimum
-• **Storage**: 20 GB of free disk space
-• **Network**: Open ports 80 (HTTP) and 443 (HTTPS)
+
+- **Operating System**: Ubuntu 20.04 LTS or later (64-bit)
+- **CPU**: 2 cores or more
+- **RAM**: 4 GB minimum
+- **Storage**: 20 GB of free disk space
+- **Network**: Open ports 80 (HTTP) and 443 (HTTPS)
 
 ## Quickstart
 
 1. **SSH into your server**:
 
-   ```bash
-   ssh root@your_server_ip
-   ```
+```bash
+ssh root@your_server_ip
+```
 
 2. **Download the deployment script**:
 
-   ```bash
-   curl -o ~/deploy.sh https://raw.githubusercontent.com/tofupilot/on-premise/main/deploy.sh
-   ```
+```bash
+curl -o ~/deploy.sh https://raw.githubusercontent.com/tofupilot/on-premise/main/deploy.sh
+```
 
 3. **Configure the deployment script**:
 
-   ```bash
-   nano ~/deploy.sh
-   ```
+```bash
+nano ~/deploy.sh
+```
 
 Locate the following lines:
 
@@ -48,22 +49,23 @@ EMAIL=""       # Add your own
 
 Replace the placeholders:
 
-• **DOMAIN_NAME**: Enter your domain name (e.g., tofupilot.yourcompany.com).
-• **EMAIL**: Enter your email address for SSL certificate registration.
+- **DOMAIN_NAME**: Enter your domain name (e.g., tofupilot.yourcompany.com).
+- **EMAIL**: Enter your email address for SSL certificate registration.
 
 4. **Run the deployment script**:
 
-   ```bash
-   chmod +x ~/deploy.sh
-   sudo ./deploy.sh
-   ```
+```bash
+chmod +x ~/deploy.sh
+sudo ./deploy.sh
+```
 
 ## Post-Installation
 
 After the script completes:
-• Access TofuPilot: Open a web browser and navigate to https://your_domain_name (replace with your actual domain). You should see the TofuPilot application interface.
-• Verify SSL Certificate: Ensure the SSL certificate is valid and the connection is secure.
-• Check Docker Containers: Verify that all Docker containers are running:
+
+- Access TofuPilot: Open a web browser and navigate to https://your_domain_name (replace with your actual domain). You should see the TofuPilot application interface.
+- Verify SSL Certificate: Ensure the SSL certificate is valid and the connection is secure.
+- Check Docker Containers: Verify that all Docker containers are running:
 
 ```bash
 docker-compose ps
