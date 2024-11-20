@@ -1,0 +1,35 @@
+services:
+  app:
+    image: fefberthier/app:latest
+    depends_on:
+      - edgedb
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    networks:
+      - app-network
+
+  edgedb:
+    image: edgedb/edgedb:latest
+    environment:
+      # Set a strong password for the 'edgedb' user
+      EDGEDB_SERVER_PASSWORD: "${EDGEDB_PASSWORD}"
+      # Generate a self-signed TLS certificate
+      EDGEDB_SERVER_TLS_CERT_MODE: "generate_self_signed"
+      # Automatically apply migrations on startup
+      EDGEDB_SERVER_MIGRATE_ON_START: "1"
+    volumes:
+      - "./dbschema:/dbschema:ro" # Read-only mount of the dbschema directory
+      - "edgedb-data:/var/lib/edgedb/data"
+    ports:
+      - "${EDGEDB_PORT}:${EDGEDB_PORT}"
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  edgedb-data:
