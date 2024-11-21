@@ -1,6 +1,6 @@
 services:
   app:
-    build: .
+    image: fefberthier/app:latest
     depends_on:
       - edgedb
     env_file:
