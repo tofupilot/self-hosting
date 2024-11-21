@@ -40,10 +40,7 @@ services:
   edgedb:
     image: edgedb/edgedb:latest
     environment:
-      # Set a strong password for the 'edgedb' user
-      EDGEDB_SERVER_PASSWORD: "${EDGEDB_PASSWORD}"
-      # Generate a self-signed TLS certificate
-      EDGEDB_SERVER_TLS_CERT_MODE: "generate_self_signed"
+      EDGEDB_SERVER_SECURITY: insecure_dev_mode
       # Automatically apply migrations on startup
       EDGEDB_SERVER_MIGRATE_ON_START: "1"
     volumes:
