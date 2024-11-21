@@ -6,17 +6,8 @@ if ! sudo -v; then
   exit 1
 fi
 
-# Env Vars
-EDGEDB_USER=edgedb
-EDGEDB_PASSWORD=$(openssl rand -base64 12)  # Generate a random 12-character password
-EDGEDB_DATABASE=edgedb
-EDGEDB_HOST=edgedb
-EDGEDB_PORT=5656
-EDGEDB_TLS_SECURITY=strict
-EDGEDB_DSN=edgedb://${EDGEDB_USER}:${EDGEDB_PASSWORD}@${EDGEDB_HOST}:${EDGEDB_PORT}/${EDGEDB_DATABASE}?tls_security=${EDGEDB_TLS_SECURITY}
-
 DOMAIN_NAME="" # Add your own
-EMAIL=""       # Add your own
+EMAIL="" # Add your own
 
 # Verify that DOMAIN_NAME and EMAIL are set
 if [ -z "$DOMAIN_NAME" ]; then
@@ -28,6 +19,22 @@ if [ -z "$EMAIL" ]; then
   echo "Error: EMAIL is not set. Please set your email address in the script."
   exit 1
 fi
+
+
+# Env Vars
+EDGEDB_USER=edgedb
+EDGEDB_PASSWORD=$(openssl rand -base64 12)  # Generate a random 12-character password
+EDGEDB_DATABASE=edgedb
+EDGEDB_HOST=edgedb
+EDGEDB_PORT=5656
+EDGEDB_TLS_SECURITY=insecure
+AWS_ACCESS_KEY_ID="tofupilot"
+AWS_SECRET_ACCESS_KEY=$(openssl rand -base64 12)  # Generate a random 12-character password
+AWS_ENDPOINT_URL="http://minio:9000"
+BUCKET_NAME="tofupilot"
+REGION="eu-west-3"
+NEXTAUTH_SECRET=$(openssl rand -base64 12)  # Generate a random 12-character password
+NEXTAUTH_URL=${DOMAIN_NAME}
 
 # Script Vars
 REPO_URL="https://github.com/tofupilot/on-premise.git"
@@ -56,9 +63,16 @@ fi
 echo "EDGEDB_USER=$EDGEDB_USER" > "$APP_DIR/.env"
 echo "EDGEDB_PASSWORD=$EDGEDB_PASSWORD" >> "$APP_DIR/.env"
 echo "EDGEDB_DATABASE=$EDGEDB_DATABASE" >> "$APP_DIR/.env"
+echo "EDGEDB_HOST=$EDGEDB_HOST" >> "$APP_DIR/.env"
 echo "EDGEDB_PORT=$EDGEDB_PORT" >> "$APP_DIR/.env"
 echo "EDGEDB_TLS_SECURITY=$EDGEDB_TLS_SECURITY" >> "$APP_DIR/.env"
-echo "EDGEDB_DSN=$EDGEDB_DSN" >> "$APP_DIR/.env"
+echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY" >> "$APP_DIR/.env"
+echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> "$APP_DIR/.env"
+echo "AWS_ENDPOINT_URL=$AWS_ENDPOINT_URL" >> "$APP_DIR/.env"
+echo "BUCKET_NAME=$BUCKET_NAME" >> "$APP_DIR/.env"
+echo "REGION=$REGION" >> "$APP_DIR/.env"
+echo "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" >> "$APP_DIR/.env"
+echo "NEXTAUTH_URL=$NEXTAUTH_URL" >> "$APP_DIR/.env"
 
 # Install Nginx
 sudo apt install nginx -y
