@@ -3,6 +3,7 @@ services:
     image: fefberthier/app:latest
     depends_on:
       - edgedb
+      - minio
     env_file:
       - .env
     ports:
