@@ -24,21 +24,17 @@ services:
     command: server /data --console-address ":9001"
     networks:
       - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   minio-init:
     image: minio/mc
     depends_on:
-      minio:
-        condition: service_healthy
+      - minio
     entrypoint: >
       /bin/sh -c "
-      sleep 5;
-      mc alias set myminio http://minio:9000 ${AWS_ACCESS_KEY_ID} ${AWS_SECRET_ACCESS_KEY} && \
+      while ! mc alias set myminio http://minio:9000 ${AWS_ACCESS_KEY_ID} ${AWS_SECRET_ACCESS_KEY}; do
+        echo 'Waiting for MinIO to be ready...'
+        sleep 10
+      done;
       mc mb myminio/${BUCKET_NAME} || true
       "
     networks:
