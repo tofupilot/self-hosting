@@ -1,6 +1,6 @@
 services:
   app:
-    image: fefberthier/app:latest
+    image: ghcr.io/tofupilot/app:latest
     depends_on:
       - edgedb
       - minio
