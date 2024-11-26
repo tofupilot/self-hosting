@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# Make sure this script is executed with sudo privileges
-if ! sudo -v; then
-  echo "This script requires sudo privileges. Please run as a user with sudo access."
-  exit 1
-fi
-
 DOMAIN_NAME="" # Add your own
 EMAIL="" # Add your own
 
@@ -27,14 +21,18 @@ EDGEDB_PASSWORD=$(openssl rand -base64 12)  # Generate a random 12-character pas
 EDGEDB_DATABASE=edgedb
 EDGEDB_HOST=edgedb
 EDGEDB_PORT=5656
-EDGEDB_TLS_SECURITY=insecure
-AWS_ACCESS_KEY_ID="tofupilot"
+EDGEDB_CLIENT_TLS_SECURITY=insecure
+
+AWS_ACCESS_KEY_ID=TOFUPILOT
 AWS_SECRET_ACCESS_KEY=$(openssl rand -base64 12)  # Generate a random 12-character password
-AWS_ENDPOINT_URL="http://minio:9000"
-BUCKET_NAME="tofupilot"
-REGION="eu-west-3"
+S3_ENDPOINT_URL=$DOMAIN_NAME:9000
+BUCKET_NAME=tofupilot
+REGION="us-east-1"
+
 NEXTAUTH_SECRET=$(openssl rand -base64 12)  # Generate a random 12-character password
-NEXTAUTH_URL=${DOMAIN_NAME}
+NEXTAUTH_URL=$DOMAIN_NAME
+
+NEXT_SHARP_PATH=/tmp/node_modules/sharp
 
 # Script Vars
 REPO_URL="https://github.com/tofupilot/on-premise.git"
@@ -65,14 +63,15 @@ echo "EDGEDB_PASSWORD=$EDGEDB_PASSWORD" >> "$APP_DIR/.env"
 echo "EDGEDB_DATABASE=$EDGEDB_DATABASE" >> "$APP_DIR/.env"
 echo "EDGEDB_HOST=$EDGEDB_HOST" >> "$APP_DIR/.env"
 echo "EDGEDB_PORT=$EDGEDB_PORT" >> "$APP_DIR/.env"
-echo "EDGEDB_TLS_SECURITY=$EDGEDB_TLS_SECURITY" >> "$APP_DIR/.env"
+echo "EDGEDB_CLIENT_TLS_SECURITY=$EDGEDB_CLIENT_TLS_SECURITY" >> "$APP_DIR/.env"
 echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY" >> "$APP_DIR/.env"
 echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> "$APP_DIR/.env"
-echo "AWS_ENDPOINT_URL=$AWS_ENDPOINT_URL" >> "$APP_DIR/.env"
+echo "S3_ENDPOINT_URL=$S3_ENDPOINT_URL" >> "$APP_DIR/.env"
 echo "BUCKET_NAME=$BUCKET_NAME" >> "$APP_DIR/.env"
 echo "REGION=$REGION" >> "$APP_DIR/.env"
 echo "NEXTAUTH_SECRET=$NEXTAUTH_SECRET" >> "$APP_DIR/.env"
 echo "NEXTAUTH_URL=$NEXTAUTH_URL" >> "$APP_DIR/.env"
+echo "NEXT_SHARP_PATH=$NEXT_SHARP_PATH" >> "$APP_DIR/.env"
 
 # Install Nginx
 sudo apt install nginx -y
