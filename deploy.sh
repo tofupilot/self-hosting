@@ -14,6 +14,24 @@ if [ -z "$EMAIL" ]; then
   exit 1
 fi
 
+# At least one of two group must be set
+AZURE_AD_CLIENT_ID=""
+AZURE_AD_CLIENT_SECRET=""
+AZURE_AD_TENANT_ID=""
+
+GOOGLE_CLIENT_ID=""
+GOOGLE_CLIENT_SECRET=""
+
+# Verify that at least one authentication provider (Google or Azure) is configured
+if [ -z "$AZURE_AD_CLIENT_ID" ] || [ -z "$AZURE_AD_CLIENT_SECRET" ] || [ -z "$AZURE_AD_TENANT_ID" ]; then
+  if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+    echo "Error: Neither Azure AD nor Google authentication credentials are configured. Authentication will not be possible."
+    exit 1
+  fi
+fi
+
+echo "Configuration is valid."
+
 
 # Env Vars
 EDGEDB_USER=edgedb
