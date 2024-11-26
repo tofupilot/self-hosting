@@ -14,7 +14,7 @@ if [ -z "$EMAIL" ]; then
   exit 1
 fi
 
-# At least one of two group must be set
+# At least one of these two groups must be set
 AZURE_AD_CLIENT_ID=""
 AZURE_AD_CLIENT_SECRET=""
 AZURE_AD_TENANT_ID=""
