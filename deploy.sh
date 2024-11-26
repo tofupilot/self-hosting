@@ -82,7 +82,7 @@ echo "EDGEDB_DATABASE=$EDGEDB_DATABASE" >> "$APP_DIR/.env"
 echo "EDGEDB_HOST=$EDGEDB_HOST" >> "$APP_DIR/.env"
 echo "EDGEDB_PORT=$EDGEDB_PORT" >> "$APP_DIR/.env"
 echo "EDGEDB_CLIENT_TLS_SECURITY=$EDGEDB_CLIENT_TLS_SECURITY" >> "$APP_DIR/.env"
-echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY" >> "$APP_DIR/.env"
+echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> "$APP_DIR/.env"
 echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> "$APP_DIR/.env"
 echo "S3_ENDPOINT_URL=$S3_ENDPOINT_URL" >> "$APP_DIR/.env"
 echo "BUCKET_NAME=$BUCKET_NAME" >> "$APP_DIR/.env"
@@ -116,9 +116,9 @@ fi
 
 # Create Nginx config with reverse proxy, SSL support, rate limiting, and streaming support
 sudo cat > /etc/nginx/sites-available/tofupilot <<EOL
-limit_req_zone \$binary_remote_addr zone=mylimit:10m rate=10r/s;
-
 server {
+    limit_req_zone \$binary_remote_addr zone=mylimit:10m rate=10r/s;
+
     listen 80;
     server_name $DOMAIN_NAME;
 
@@ -150,6 +150,10 @@ server {
         proxy_buffering off;
         proxy_set_header X-Accel-Buffering no;
     }
+}
+
+events {
+    worker_connections: 1024;
 }
 EOL
 
