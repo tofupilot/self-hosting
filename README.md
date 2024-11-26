@@ -5,10 +5,10 @@ Welcome to the TofuPilot On-Premise Deployment Guide. This repository provides e
 ## Prerequisites
 
 1. **Enterprise Plan Subscription**: You must be a TofuPilot client on an Enterprise plan. If you’re not yet subscribed, please contact [our sales team](support@tofupilot.com).
-2. **Domain Name**: Purchase a domain name that you’ll use for your self-hosted TofuPilot application (e.g., tofupilot.yourcompany.com).
+2. **Domain Name**: A domain name that you will use for your self-hosted TofuPilot application (e.g., tofupilot.yourcompany.com).
 3. **DNS Configuration**: Create an `A` record in your DNS settings pointing your chosen domain to the public IPv4 address of your server.
 4. **Server Access**: Have root or sudo access to a server where you will install TofuPilot.
-5. **Valid Email Address**: You’ll need a valid email address for SSL certificate registration with Let’s Encrypt.
+5. **Valid Email Address**: You will need a valid email address for SSL certificate registration with Let’s Encrypt.
 
 ## System Requirements
 
@@ -52,7 +52,38 @@ Replace the placeholders:
 - **DOMAIN_NAME**: Enter your domain name (e.g., tofupilot.yourcompany.com).
 - **EMAIL**: Enter your email address for SSL certificate registration.
 
-4. **Run the deployment script**:
+4. **Configure authentication**:
+
+   To authenticate with your TofuPilot instance, you must configure either Azure Active Directory (Azure AD), Google, or both.
+
+   **Configuring Authentication with Azure Active Directory (Azure AD)**:
+
+   - In https://portal.azure.com search for "Microsoft Entra ID", and select your organization.
+   - Next, in the left menu expand the "Manage" accordion and then go to "App Registration" , and create a new one.
+   - Pay close attention to "Who can use this application or access this API?"
+     - This allows you to scope access to specific types of user accounts
+     - Only your tenant, all azure tenants, or all azure tenants and public Microsoft accounts (Skype, Xbox, Outlook.com, etc.)
+   - When asked for a redirection URL, select the platform type "Web" and use https://{your-domain>}/api/auth/callback/azure-ad
+   - After your App Registration is created, under "Client Credential" create your Client secret.
+   - Now copy your:
+   - Application (client) ID
+   - Directory (tenant) ID
+   - Client secret (value)
+
+   In `deploy.sh`, replace the following placeholders:
+
+   ```bash
+   AZURE_AD_CLIENT_ID=""
+   AZURE_AD_TENANT_ID=""
+   AZURE_AD_CLIENT_SECRET=""
+   ```
+
+   **Configuring Authentication with Google**:
+
+   - See https://console.developers.google.com/apis/credentials
+   - When asked for the "Authorized redirect URIs", use https://{YOUR_DOMAIN}/api/auth/callback/google
+
+5. **Run the deployment script**:
 
 ```bash
 chmod +x ~/deploy.sh
