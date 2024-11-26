@@ -1,6 +1,6 @@
 services:
-  app:
-    image: ghcr.io/tofupilot/app:latest
+  tofupilot:
+    image: ghcr.io/tofupilot/tofupilot:latest
     depends_on:
       - edgedb
       - minio
@@ -9,7 +9,7 @@ services:
     ports:
       - "3000:3000"
     networks:
-      - app-network
+      - tofupilot-network
 
   minio:
     image: minio/minio:latest
@@ -23,7 +23,7 @@ services:
       - minio-data:/data
     command: server /data --console-address ":9001"
     networks:
-      - app-network
+      - tofupilot-network
 
   minio-init:
     image: minio/mc
@@ -38,7 +38,7 @@ services:
       mc mb myminio/${BUCKET_NAME} || true
       "
     networks:
-      - app-network
+      - tofupilot-network
 
   edgedb:
     image: edgedb/edgedb:latest
@@ -52,10 +52,10 @@ services:
     ports:
       - "${EDGEDB_PORT}:${EDGEDB_PORT}"
     networks:
-      - app-network
+      - tofupilot-network
 
 networks:
-  app-network:
+  tofupilot-network:
     driver: bridge
 
 volumes:
