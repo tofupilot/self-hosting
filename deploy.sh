@@ -89,9 +89,6 @@ REGION="us-east-1"
 NEXTAUTH_SECRET=$(openssl rand -base64 12)  # Generate a random 12-character password
 NEXTAUTH_URL=https://$DOMAIN_NAME
 
-# Additional Configurations
-NEXT_SHARP_PATH="" # If any specific path is needed
-
 # Script Variables
 REPO_URL="https://github.com/tofupilot/on-premise.git"
 # Installation directory for TofuPilot
@@ -140,7 +137,7 @@ EDGEDB_HOST=$EDGEDB_HOST
 EDGEDB_PORT=$EDGEDB_PORT
 EDGEDB_CLIENT_TLS_SECURITY=$EDGEDB_CLIENT_TLS_SECURITY
 
-# AWS S3 Compatible Storage Configuration
+# Open-source AWS S3 Compatible Storage Configuration
 AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
 AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
 S3_ENDPOINT_URL=$S3_ENDPOINT_URL
@@ -150,9 +147,6 @@ REGION=$REGION
 # NextAuth Configuration
 NEXTAUTH_SECRET=$NEXTAUTH_SECRET
 NEXTAUTH_URL=$NEXTAUTH_URL
-
-# Additional Configuration
-NEXT_SHARP_PATH=$NEXT_SHARP_PATH
 
 # Authentication Configuration
 # Google OAuth
