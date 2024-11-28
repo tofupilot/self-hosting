@@ -306,7 +306,7 @@ echo "Building and starting Docker containers..."
 
 # Build and run the Docker containers from the app directory
 cd $TOFUPILOT_DIR
-sudo docker-compose up -d
+docker-compose up -d
 
 # Check if Docker Compose started correctly
 if ! sudo docker-compose ps | grep "Up"; then

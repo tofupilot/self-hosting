@@ -17,11 +17,11 @@ fi
 
 # Build and restart the Docker containers from the app directory (~/tofupilot)
 echo "Rebuilding and restarting Docker containers..."
-sudo docker-compose down
-sudo docker-compose up -d
+docker-compose down
+docker-compose up -d
 
 # Check if Docker Compose started correctly
-if ! sudo docker-compose ps | grep "Up"; then
+if ! docker-compose ps | grep "Up"; then
   echo "Docker containers failed to start. Check logs with 'docker-compose logs'."
   exit 1
 fi
