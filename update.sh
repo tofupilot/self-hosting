@@ -2,17 +2,17 @@
 
 # Script Vars
 REPO_URL="https://github.com/tofupilot/on-premise.git"
-APP_DIR=~/tofupilot
+TOFUPILOT_DIR=~/tofupilot
 
 # Pull the latest changes from the Git repository
-if [ -d "$APP_DIR" ]; then
+if [ -d "$TOFUPILOT_DIR" ]; then
   echo "Pulling latest changes from the repository..."
-  cd $APP_DIR
+  cd $TOFUPILOT_DIR
   git pull origin main
 else
   echo "Cloning repository from $REPO_URL..."
-  git clone $REPO_URL $APP_DIR
-  cd $APP_DIR
+  git clone $REPO_URL $TOFUPILOT_DIR
+  cd $TOFUPILOT_DIR
 fi
 
 # Build and restart the Docker containers from the app directory (~/tofupilot)

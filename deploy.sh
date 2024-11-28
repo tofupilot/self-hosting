@@ -12,13 +12,10 @@
 DOMAIN_NAME="" # YOUR_DOMAIN_NAME_FOR_TOFUPILOT
 
 # Email associated with your domain name (used for SSL certificates)
-EMAIL="" # THE_EMAIL_ASSOCIATED_WITH_YOUR_DNS
+EMAIL="" # THE_EMAIL_ASSOCIATED_WITH_YOUR_DOMAIN_NAME
 
 # Storage domain name (used for object storage service)
 STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME" # Default value; replace if desired
-
-# Installation directory for TofuPilot
-APP_DIR=~/tofupilot # Folder where TofuPilot will be installed; replace if desired
 
 #----------------------------#
 #   Authentication Config    #
@@ -97,6 +94,8 @@ NEXT_SHARP_PATH="" # If any specific path is needed
 
 # Script Variables
 REPO_URL="https://github.com/tofupilot/on-premise.git"
+# Installation directory for TofuPilot
+TOFUPILOT_DIR=~/tofupilot # Folder where TofuPilot will be installed; If you want to update it, update it also in the ./update.sh script.
 
 #----------------------------#
 #      System Updates        #
@@ -110,13 +109,13 @@ sudo apt update && sudo apt upgrade -y
 #----------------------------#
 
 # Clone the Git repository or pull the latest changes if it already exists
-if [ -d "$APP_DIR" ]; then
-  echo "Directory $APP_DIR already exists. Pulling latest changes..."
-  cd $APP_DIR && git pull
+if [ -d "$TOFUPILOT_DIR" ]; then
+  echo "Directory $TOFUPILOT_DIR already exists. Pulling latest changes..."
+  cd $TOFUPILOT_DIR && git pull
 else
   echo "Cloning repository from $REPO_URL..."
-  git clone $REPO_URL $APP_DIR
-  cd $APP_DIR
+  git clone $REPO_URL $TOFUPILOT_DIR
+  cd $TOFUPILOT_DIR
 fi
 
 #----------------------------#
@@ -124,15 +123,15 @@ fi
 #----------------------------#
 
 # Back up the existing .env file before overriding it
-if [ -f "$APP_DIR/.env" ]; then
+if [ -f "$TOFUPILOT_DIR/.env" ]; then
   echo ".env file already exists. Backing up to .env.bak"
-  mv "$APP_DIR/.env" "$APP_DIR/.env.bak"
+  mv "$TOFUPILOT_DIR/.env" "$TOFUPILOT_DIR/.env.bak"
 fi
 
 # Create the .env file inside the app directory
 echo "Creating .env configuration file..."
 
-cat <<EOL > "$APP_DIR/.env"
+cat <<EOL > "$TOFUPILOT_DIR/.env"
 # EdgeDB Configuration
 EDGEDB_USER=$EDGEDB_USER
 EDGEDB_PASSWORD=$EDGEDB_PASSWORD
@@ -307,7 +306,7 @@ sudo systemctl restart nginx
 echo "Building and starting Docker containers..."
 
 # Build and run the Docker containers from the app directory
-cd $APP_DIR
+cd $TOFUPILOT_DIR
 sudo docker-compose up -d
 
 # Check if Docker Compose started correctly
@@ -322,4 +321,3 @@ fi
 
 echo "Deployment complete. Your TofuPilot app and database are now running."
 echo "TofuPilot is available at https://$DOMAIN_NAME"
-echo "The storage service is available at https://$STORAGE_DOMAIN_NAME"
