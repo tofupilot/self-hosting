@@ -18,7 +18,7 @@ fi
 # Build and restart the Docker containers from the app directory (~/tofupilot)
 echo "Rebuilding and restarting Docker containers..."
 docker-compose down
-docker-compose up -d
+docker-compose up -d --pull always
 
 # Check if Docker Compose started correctly
 if ! docker-compose ps | grep "Up"; then
