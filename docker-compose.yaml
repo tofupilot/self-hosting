@@ -1,6 +1,9 @@
 services:
   tofupilot:
     image: ghcr.io/tofupilot/tofupilot:latest
+    deploy:
+      update_config:
+        pull_policy: always
     depends_on:
       - edgedb
       - minio
