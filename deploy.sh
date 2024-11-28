@@ -9,13 +9,13 @@
 #----------------------------#
 
 # Main domain name for TofuPilot (e.g., tofupilot.example.com)
-DOMAIN_NAME="" # YOUR_DOMAIN_NAME_FOR_TOFUPILOT
+DOMAIN_NAME="" # e.g tofupilot.your-domain.com, please DO NOT include the protocol scheme (`https://`)
 
 # Email associated with your domain name (used for SSL certificates)
 EMAIL="" # THE_EMAIL_ASSOCIATED_WITH_YOUR_DOMAIN_NAME
 
 # Storage domain name (used for object storage service)
-STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME" # Default value; replace if desired
+STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME" # Default value; replace if desired, please DO NOT include the protocol scheme (`https://`)
 
 #----------------------------#
 #   Authentication Config    #
@@ -81,7 +81,8 @@ EDGEDB_CLIENT_TLS_SECURITY=insecure
 # AWS S3 Compatible Storage Configuration
 AWS_ACCESS_KEY_ID=TOFUPILOT
 AWS_SECRET_ACCESS_KEY=$(openssl rand -base64 12)  # Generate a random 12-character password
-S3_ENDPOINT_URL=https://$STORAGE_DOMAIN_NAME
+STORAGE_EXTERNAL_ENDPOINT_URL=https://$STORAGE_DOMAIN_NAME
+STORAGE_INTERNAL_ENDPOINT_URL=http://minio:9000
 BUCKET_NAME=tofupilot
 REGION="us-east-1"
 
@@ -92,7 +93,7 @@ NEXTAUTH_URL=https://$DOMAIN_NAME
 # Script Variables
 REPO_URL="https://github.com/tofupilot/self-hosting.git"
 # Installation directory for TofuPilot
-TOFUPILOT_DIR=~/tofupilot # Folder where TofuPilot will be installed; If you want to update it, update it also in the ./update.sh script.
+TOFUPILOT_DIR=~/tofupilot # Folder where TofuPilot will be installed; If you wish to update it, please update it in the ./update.sh script too.
 
 #----------------------------#
 #      System Updates        #
@@ -129,6 +130,9 @@ fi
 echo "Creating .env configuration file..."
 
 cat <<EOL > "$TOFUPILOT_DIR/.env"
+# Domain name configuration
+DOMAIN_NAME=$DOMAIN_NAME
+
 # EdgeDB Configuration
 EDGEDB_USER=$EDGEDB_USER
 EDGEDB_PASSWORD=$EDGEDB_PASSWORD
@@ -140,7 +144,8 @@ EDGEDB_CLIENT_TLS_SECURITY=$EDGEDB_CLIENT_TLS_SECURITY
 # Open-source AWS S3 Compatible Storage Configuration
 AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
 AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-S3_ENDPOINT_URL=$S3_ENDPOINT_URL
+STORAGE_EXTERNAL_ENDPOINT_URL=$STORAGE_EXTERNAL_ENDPOINT_URL
+STORAGE_INTERNAL_ENDPOINT_URL=$STORAGE_INTERNAL_ENDPOINT_URL
 BUCKET_NAME=$BUCKET_NAME
 REGION=$REGION
 
