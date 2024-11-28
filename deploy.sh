@@ -90,7 +90,7 @@ NEXTAUTH_SECRET=$(openssl rand -base64 12)  # Generate a random 12-character pas
 NEXTAUTH_URL=https://$DOMAIN_NAME
 
 # Script Variables
-REPO_URL="https://github.com/tofupilot/on-premise.git"
+REPO_URL="https://github.com/tofupilot/self-hosting.git"
 # Installation directory for TofuPilot
 TOFUPILOT_DIR=~/tofupilot # Folder where TofuPilot will be installed; If you want to update it, update it also in the ./update.sh script.
 

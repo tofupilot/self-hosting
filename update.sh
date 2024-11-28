@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Script Vars
-REPO_URL="https://github.com/tofupilot/on-premise.git"
+REPO_URL="https://github.com/tofupilot/self-hosting.git"
 TOFUPILOT_DIR=~/tofupilot
 
 # Pull the latest changes from the Git repository

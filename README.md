@@ -32,7 +32,7 @@ ssh root@your_server_ip
 2. **Download the deployment script**:
 
 ```bash
-curl -o ~/deploy.sh https://raw.githubusercontent.com/tofupilot/on-premise/main/deploy.sh
+curl -o ~/deploy.sh https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh
 ```
 
 3. **Configure the deployment script**:
