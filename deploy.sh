@@ -131,7 +131,7 @@ echo "Creating .env configuration file..."
 
 cat <<EOL > "$TOFUPILOT_DIR/.env"
 # Domain name configuration
-DOMAIN_NAME=$DOMAIN_NAME
+NEXT_PUBLIC_DOMAIN_NAME=$DOMAIN_NAME
 
 # EdgeDB Configuration
 EDGEDB_USER=$EDGEDB_USER
