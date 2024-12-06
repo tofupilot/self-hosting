@@ -236,9 +236,6 @@ SMTP_PASSWORD=$(prompt_for_value "SMTP_PASSWORD" "SMTP password? (leave blank if
 
 EMAIL_FROM=$(prompt_for_value "EMAIL_FROM" "Email address used as 'from' in emails? (leave blank if not using Email auth)" "")
 
-# Setting STORAGE_DOMAIN_NAME default
-STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME"
-
 # Verify configuration validity
 if [ -z "$DOMAIN_NAME" ] || [ -z "$EMAIL" ]; then
   echo "Error: DOMAIN_NAME and EMAIL must be set."
