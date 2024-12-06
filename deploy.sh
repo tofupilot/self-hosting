@@ -1,109 +1,56 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Script to deploy TofuPilot on a self-hosted server
 # This script installs necessary dependencies, configures SSL certificates,
 # sets up Nginx as a reverse proxy, and runs the TofuPilot application using Docker Compose.
 
 #----------------------------#
-#       Configuration        #
+#         Functions          #
 #----------------------------#
 
-# Main domain name for TofuPilot (e.g., tofupilot.example.com)
-DOMAIN_NAME="" # e.g tofupilot.your-domain.com, DO NOT include the protocol scheme (`https://`)
+CONFIG_FILE="./config.env"
 
-# Email associated with your domain name (used for SSL certificates)
-EMAIL="" # THE_EMAIL_ASSOCIATED_WITH_YOUR_DOMAIN_NAME
+prompt_for_value() {
+  local var_name="$1"
+  local prompt_message="$2"
+  local default_value="$3"
 
-# Storage domain name (used for object storage service)
-STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME" # Default value; replace if desired, DO NOT include the protocol scheme (`https://`)
-
-#----------------------------#
-#   Authentication Config    #
-#----------------------------#
-
-# At least one of these authentication methods must be configured
-
-# Google OAuth Credentials
-GOOGLE_CLIENT_ID=""
-GOOGLE_CLIENT_SECRET=""
-
-# Azure AD Credentials
-AZURE_AD_CLIENT_ID=""
-AZURE_AD_CLIENT_SECRET=""
-AZURE_AD_TENANT_ID=""
-
-# SMTP Credentials (for email authentication)
-SMTP_HOST=""
-SMTP_PASSWORD=""
-SMTP_PORT="587"
-SMTP_USER=""
-EMAIL_FROM="" # Example: tofupilot-auth@your-domain
-
-#----------------------------#
-#    Preliminary Checks      #
-#----------------------------#
-
-# Verify that DOMAIN_NAME and EMAIL are set
-if [ -z "$DOMAIN_NAME" ]; then
-  echo "Error: DOMAIN_NAME is not set. Please set your domain name in the script."
-  exit 1
-fi
-
-if [ -z "$EMAIL" ]; then
-  echo "Error: EMAIL is not set. Please set your email address in the script."
-  exit 1
-fi
-
-# Verify that at least one authentication provider is configured
-if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
-  if [ -z "$AZURE_AD_CLIENT_ID" ] || [ -z "$AZURE_AD_CLIENT_SECRET" ] || [ -z "$AZURE_AD_TENANT_ID" ]; then
-    if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_PASSWORD" ] || [ -z "$SMTP_PORT" ] || [ -z "$SMTP_USER" ] || [ -z "$EMAIL_FROM" ]; then
-      echo "Error: Neither Google OAuth, Azure AD, nor SMTP credentials are fully configured. Authentication will not be possible."
-      exit 1
+  # Checking if config file exists and if value already recorded
+  if [ -f "$CONFIG_FILE" ]; then
+    local existing_value
+    existing_value=$(grep "^${var_name}=" "$CONFIG_FILE" | cut -d= -f2-)
+    if [ -n "$existing_value" ]; then
+      echo "$existing_value" # Returning existing value
+      return
     fi
   fi
-fi
 
-echo "Configuration is valid."
+  # Prompting user if value not found
+  if [ -n "$default_value" ]; then
+    read -r -p "$prompt_message [$default_value]: " user_input
+  else
+    read -r -p "$prompt_message: " user_input
+  fi
 
-#----------------------------#
-#        Environment         #
-#----------------------------#
+  if [ -z "$user_input" ]; then
+    user_input="$default_value"
+  fi
 
-# EdgeDB Configuration
-EDGEDB_USER=edgedb
-EDGEDB_PASSWORD=$(openssl rand -base64 12)  # Generate a random 12-character password
-EDGEDB_DATABASE=edgedb
-EDGEDB_HOST=edgedb
-EDGEDB_PORT=5656
-EDGEDB_CLIENT_TLS_SECURITY=insecure
+  # Saving value to config file
+  echo "${var_name}=${user_input}" >> "$CONFIG_FILE"
+  echo "$user_input"
+}
 
-# AWS S3 Compatible Storage Configuration
-AWS_ACCESS_KEY_ID=TOFUPILOT
-AWS_SECRET_ACCESS_KEY=$(openssl rand -base64 12)  # Generate a random 12-character password
-STORAGE_EXTERNAL_ENDPOINT_URL=https://$STORAGE_DOMAIN_NAME
-STORAGE_INTERNAL_ENDPOINT_URL=http://minio:9000
-BUCKET_NAME=tofupilot
-REGION="us-east-1"
+create_env_file() {
+  # Backing up existing .env if exists
+  if [ -f "./.env" ]; then
+    echo ".env file already exists. Backing up to .env.bak"
+    mv "./.env" "./.env.bak"
+  fi
 
-# NextAuth Configuration
-NEXTAUTH_SECRET=$(openssl rand -base64 12)  # Generate a random 12-character password
-NEXTAUTH_URL=https://$DOMAIN_NAME
+  echo "Creating .env configuration file..."
 
-#----------------------------#
-#       Configure .env       #
-#----------------------------#
-
-# Back up the existing .env file before overriding it
-if [ -f "./.env" ]; then
-  echo ".env file already exists. Backing up to .env.bak"
-  mv "./.env" "./.env.bak"
-fi
-
-# Create the .env file inside the app directory
-echo "Creating .env configuration file..."
-
-cat <<EOL > "./.env"
+  cat <<EOL > "./.env"
 # Domain name configuration
 NEXT_PUBLIC_DOMAIN_NAME=$DOMAIN_NAME
 
@@ -145,63 +92,50 @@ SMTP_USER=$SMTP_USER
 EMAIL_FROM=$EMAIL_FROM
 EOL
 
-echo ".env file created successfully."
+  echo ".env file created successfully."
+}
 
-#----------------------------#
-#       Install Nginx        #
-#----------------------------#
+install_nginx() {
+  echo "Installing Nginx..."
+  sudo apt install nginx -y
 
-echo "Installing Nginx..."
-sudo apt install nginx -y
+  echo "Removing old Nginx configuration (if any)..."
+  sudo rm -f /etc/nginx/sites-available/tofupilot
+  sudo rm -f /etc/nginx/sites-enabled/tofupilot
+}
 
-# Remove old Nginx config if it exists
-echo "Removing old Nginx configuration (if any)..."
-sudo rm -f /etc/nginx/sites-available/tofupilot
-sudo rm -f /etc/nginx/sites-enabled/tofupilot
+obtain_ssl_certificates() {
+  echo "Stopping Nginx temporarily for SSL certificate generation..."
+  sudo systemctl stop nginx
 
-#----------------------------#
-#    Obtain SSL Certificates #
-#----------------------------#
+  echo "Installing Certbot..."
+  sudo apt install certbot -y
 
-# Stop Nginx temporarily to allow Certbot to run in standalone mode
-echo "Stopping Nginx temporarily for SSL certificate generation..."
-sudo systemctl stop nginx
+  echo "Obtaining SSL certificates..."
+  sudo certbot certonly --standalone -d "$DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL"
+  sudo certbot certonly --standalone -d "$STORAGE_DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL"
 
-# Install Certbot
-echo "Installing Certbot..."
-sudo apt install certbot -y
+  if [ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]; then
+    echo "Downloading options-ssl-nginx.conf..."
+    sudo wget https://raw.githubusercontent.com/certbot/certbot/main/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf -P /etc/letsencrypt/
+  fi
 
-# Obtain SSL certificates using Certbot standalone mode
-echo "Obtaining SSL certificates..."
-sudo certbot certonly --standalone -d $DOMAIN_NAME --non-interactive --agree-tos -m $EMAIL
-sudo certbot certonly --standalone -d $STORAGE_DOMAIN_NAME --non-interactive --agree-tos -m $EMAIL
+  if [ ! -f /etc/letsencrypt/ssl-dhparams.pem ]; then
+    echo "Generating Diffie-Hellman parameters..."
+    sudo openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+  fi
+}
 
-# Ensure SSL files exist or generate them
-if [ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]; then
-  echo "Downloading options-ssl-nginx.conf..."
-  sudo wget https://raw.githubusercontent.com/certbot/certbot/main/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf -P /etc/letsencrypt/
-fi
+configure_nginx() {
+  echo "Configuring Nginx..."
 
-if [ ! -f /etc/letsencrypt/ssl-dhparams.pem ]; then
-  echo "Generating Diffie-Hellman parameters..."
-  sudo openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
-fi
-
-#----------------------------#
-#     Configure Nginx        #
-#----------------------------#
-
-echo "Configuring Nginx..."
-
-# Create Nginx config with reverse proxy, SSL support, rate limiting, and streaming support
-sudo bash -c "cat > /etc/nginx/sites-available/tofupilot" <<EOL
+  sudo bash -c "cat > /etc/nginx/sites-available/tofupilot" <<EOL
 limit_req_zone \$binary_remote_addr zone=mylimit:10m rate=10r/s;
 
 server {
     listen 80;
     server_name $DOMAIN_NAME;
 
-    # Redirect all HTTP requests to HTTPS
     return 301 https://\$host\$request_uri;
 }
 
@@ -214,7 +148,6 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    # Enable rate limiting
     limit_req zone=mylimit burst=20 nodelay;
 
     location / {
@@ -224,8 +157,6 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
-
-        # Disable buffering for streaming support
         proxy_buffering off;
         proxy_set_header X-Accel-Buffering no;
     }
@@ -235,7 +166,6 @@ server {
     listen 80;
     server_name $STORAGE_DOMAIN_NAME;
 
-    # Redirect HTTP to HTTPS
     return 301 https://\$host\$request_uri;
 }
 
@@ -248,7 +178,6 @@ server {
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
 
-    # Proxy to storage service
     location / {
         proxy_pass http://localhost:9000;
         proxy_http_version 1.1;
@@ -256,40 +185,100 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
-
-        # Disable buffering for streaming support
         proxy_buffering off;
         proxy_set_header X-Accel-Buffering no;
     }
 }
 EOL
 
-# Create symbolic link to enable the site
-echo "Enabling Nginx site configuration..."
-sudo ln -s /etc/nginx/sites-available/tofupilot /etc/nginx/sites-enabled/tofupilot
+  echo "Enabling Nginx site configuration..."
+  sudo ln -s /etc/nginx/sites-available/tofupilot /etc/nginx/sites-enabled/tofupilot
 
-# Restart Nginx to apply the new configuration
-echo "Restarting Nginx..."
-sudo systemctl restart nginx
+  echo "Restarting Nginx..."
+  sudo systemctl restart nginx
+}
+
+run_docker_compose() {
+  echo "Building and starting Docker containers..."
+  docker-compose up -d
+
+  if ! sudo docker-compose ps | grep "Up"; then
+    echo "Docker containers failed to start. Check logs with 'docker-compose logs'."
+    exit 1
+  fi
+}
 
 #----------------------------#
-#     Run Docker Compose     #
+#         Main Script        #
 #----------------------------#
 
-echo "Building and starting Docker containers..."
+# Create config file if does not exist
+if [ ! -f "$CONFIG_FILE" ]; then
+  touch "$CONFIG_FILE"
+fi
 
-# Build and run the Docker containers 
-docker-compose up -d
+# Prompting user for necessary environment variables
+DOMAIN_NAME=$(prompt_for_value "DOMAIN_NAME" "Hostname for your TofuPilot?" "tofupilot.example.com")
+EMAIL=$(prompt_for_value "EMAIL" "Email address associated with your domain (for SSL)?" "me@example.com")
 
-# Check if Docker Compose started correctly
-if ! sudo docker-compose ps | grep "Up"; then
-  echo "Docker containers failed to start. Check logs with 'docker-compose logs'."
+GOOGLE_CLIENT_ID=$(prompt_for_value "GOOGLE_CLIENT_ID" "Google Client ID? (leave blank if not using Google auth)" "")
+GOOGLE_CLIENT_SECRET=$(prompt_for_value "GOOGLE_CLIENT_SECRET" "Google Client Secret? (leave blank if not using Google auth)" "")
+
+AZURE_AD_CLIENT_ID=$(prompt_for_value "AZURE_AD_CLIENT_ID" "Azure AD Client ID? (leave blank if not using Azure AD auth)" "")
+AZURE_AD_CLIENT_SECRET=$(prompt_for_value "AZURE_AD_CLIENT_SECRET" "Azure AD Client Secret? (leave blank if not using Azure AD auth)" "")
+AZURE_AD_TENANT_ID=$(prompt_for_value "AZURE_AD_TENANT_ID" "Azure AD Tenant ID? (leave blank if not using Azure AD auth)" "")
+
+SMTP_HOST=$(prompt_for_value "SMTP_HOST" "SMTP server address? (leave blank if not using Email auth)" "")
+SMTP_PORT=$(prompt_for_value "SMTP_PORT" "SMTP port? (leave blank if not using Email auth)" "")
+SMTP_USER=$(prompt_for_value "SMTP_USER" "SMTP user name? (leave blank if not using Email auth)" "")
+SMTP_PASSWORD=$(prompt_for_value "SMTP_PASSWORD" "SMTP password? (leave blank if not using Email auth)" "")
+
+EMAIL_FROM=$(prompt_for_value "EMAIL_FROM" "Email address used as 'from' in emails? (leave blank if not using Email auth)" "")
+
+# Setting STORAGE_DOMAIN_NAME default
+STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME"
+
+# Verify configuration validity
+if [ -z "$DOMAIN_NAME" ] || [ -z "$EMAIL" ]; then
+  echo "Error: DOMAIN_NAME and EMAIL must be set."
   exit 1
 fi
 
-#----------------------------#
-#      Deployment Done       #
-#----------------------------#
+# Check if at least one auth is configured
+if [ -z "$GOOGLE_CLIENT_ID" ] || [ -z "$GOOGLE_CLIENT_SECRET" ]; then
+  if [ -z "$AZURE_AD_CLIENT_ID" ] || [ -z "$AZURE_AD_CLIENT_SECRET" ] || [ -z "$AZURE_AD_TENANT_ID" ]; then
+    if [ -z "$SMTP_HOST" ] || [ -z "$SMTP_PASSWORD" ] || [ -z "$SMTP_PORT" ] || [ -z "$SMTP_USER" ] || [ -z "$EMAIL_FROM" ]; then
+      echo "Error: Neither Google OAuth, Azure AD, nor SMTP credentials are fully configured. Authentication will not be possible."
+      exit 1
+    fi
+  fi
+fi
+
+echo "Configuration is valid."
+
+# Environment variables setup
+EDGEDB_USER="edgedb"
+EDGEDB_PASSWORD=$(openssl rand -base64 12)
+EDGEDB_DATABASE="edgedb"
+EDGEDB_HOST="edgedb"
+EDGEDB_PORT="5656"
+EDGEDB_CLIENT_TLS_SECURITY="insecure"
+
+AWS_ACCESS_KEY_ID="TOFUPILOT"
+AWS_SECRET_ACCESS_KEY=$(openssl rand -base64 12)
+STORAGE_EXTERNAL_ENDPOINT_URL="https://$STORAGE_DOMAIN_NAME"
+STORAGE_INTERNAL_ENDPOINT_URL="http://minio:9000"
+BUCKET_NAME="tofupilot"
+REGION="us-east-1"
+
+NEXTAUTH_SECRET=$(openssl rand -base64 12)
+NEXTAUTH_URL="https://$DOMAIN_NAME"
+
+create_env_file
+install_nginx
+obtain_ssl_certificates
+configure_nginx
+run_docker_compose
 
 echo "Deployment complete. Your TofuPilot app and database are now running."
 echo "TofuPilot is available at https://$DOMAIN_NAME"
