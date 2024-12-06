@@ -9,13 +9,13 @@
 #----------------------------#
 
 # Main domain name for TofuPilot (e.g., tofupilot.example.com)
-DOMAIN_NAME="" # e.g tofupilot.your-domain.com, please DO NOT include the protocol scheme (`https://`)
+DOMAIN_NAME="" # e.g tofupilot.your-domain.com, DO NOT include the protocol scheme (`https://`)
 
 # Email associated with your domain name (used for SSL certificates)
 EMAIL="" # THE_EMAIL_ASSOCIATED_WITH_YOUR_DOMAIN_NAME
 
 # Storage domain name (used for object storage service)
-STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME" # Default value; replace if desired, please DO NOT include the protocol scheme (`https://`)
+STORAGE_DOMAIN_NAME="storage.$DOMAIN_NAME" # Default value; replace if desired, DO NOT include the protocol scheme (`https://`)
 
 #----------------------------#
 #   Authentication Config    #
@@ -90,46 +90,20 @@ REGION="us-east-1"
 NEXTAUTH_SECRET=$(openssl rand -base64 12)  # Generate a random 12-character password
 NEXTAUTH_URL=https://$DOMAIN_NAME
 
-# Script Variables
-REPO_URL="https://github.com/tofupilot/self-hosting.git"
-# Installation directory for TofuPilot
-TOFUPILOT_DIR=~/tofupilot # Folder where TofuPilot will be installed; If you wish to update it, please update it in the ./update.sh script too.
-
-#----------------------------#
-#      System Updates        #
-#----------------------------#
-
-echo "Updating package list and upgrading existing packages..."
-sudo apt update && sudo apt upgrade -y
-
-#----------------------------#
-#     Clone TofuPilot Repo   #
-#----------------------------#
-
-# Clone the Git repository or pull the latest changes if it already exists
-if [ -d "$TOFUPILOT_DIR" ]; then
-  echo "Directory $TOFUPILOT_DIR already exists. Pulling latest changes..."
-  cd $TOFUPILOT_DIR && git pull
-else
-  echo "Cloning repository from $REPO_URL..."
-  git clone $REPO_URL $TOFUPILOT_DIR
-  cd $TOFUPILOT_DIR
-fi
-
 #----------------------------#
 #       Configure .env       #
 #----------------------------#
 
 # Back up the existing .env file before overriding it
-if [ -f "$TOFUPILOT_DIR/.env" ]; then
+if [ -f "./.env" ]; then
   echo ".env file already exists. Backing up to .env.bak"
-  mv "$TOFUPILOT_DIR/.env" "$TOFUPILOT_DIR/.env.bak"
+  mv "./.env" "./.env.bak"
 fi
 
 # Create the .env file inside the app directory
 echo "Creating .env configuration file..."
 
-cat <<EOL > "$TOFUPILOT_DIR/.env"
+cat <<EOL > "./.env"
 # Domain name configuration
 NEXT_PUBLIC_DOMAIN_NAME=$DOMAIN_NAME
 
@@ -304,8 +278,7 @@ sudo systemctl restart nginx
 
 echo "Building and starting Docker containers..."
 
-# Build and run the Docker containers from the app directory
-cd $TOFUPILOT_DIR
+# Build and run the Docker containers 
 docker-compose up -d
 
 # Check if Docker Compose started correctly
