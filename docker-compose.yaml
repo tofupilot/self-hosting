@@ -2,7 +2,8 @@ services:
   tofupilot:
     image: ghcr.io/tofupilot/tofupilot:latest
     depends_on:
-      - edgedb
+      - edgedb:
+        condition: service_healthy
       - minio
     env_file:
       - .env
@@ -44,15 +45,22 @@ services:
     image: edgedb/edgedb:latest
     environment:
       EDGEDB_SERVER_SECURITY: insecure_dev_mode
-      # Automatically apply migrations on startup
-      EDGEDB_SERVER_MIGRATE_ON_START: "1"
     volumes:
-      - "./dbschema:/dbschema:ro" # Read-only mount of the dbschema directory
       - "database-data:/var/lib/edgedb/data"
     ports:
       - "${EDGEDB_PORT}:${EDGEDB_PORT}"
     networks:
       - tofupilot-network
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "curl -f http://localhost:${EDGEDB_PORT}/server/status/ready || exit 1",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
 networks:
   tofupilot-network:
