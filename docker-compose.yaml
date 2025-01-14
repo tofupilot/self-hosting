@@ -2,9 +2,10 @@ services:
   tofupilot:
     image: ghcr.io/tofupilot/tofupilot:latest
     depends_on:
-      - edgedb:
+      edgedb:
         condition: service_healthy
-      - minio
+      minio:
+        condition: service_started
     env_file:
       - .env
     ports:
