@@ -233,8 +233,7 @@ SMTP_HOST=$(prompt_for_value "SMTP_HOST" "SMTP server address? (leave blank if n
 SMTP_PORT=$(prompt_for_value "SMTP_PORT" "SMTP port? (leave blank if not using Email auth)" "")
 SMTP_USER=$(prompt_for_value "SMTP_USER" "SMTP user name? (leave blank if not using Email auth)" "")
 SMTP_PASSWORD=$(prompt_for_value "SMTP_PASSWORD" "SMTP password? (leave blank if not using Email auth)" "")
-
-EMAIL_FROM=$(prompt_for_value "EMAIL_FROM" "Email address used as 'from' in emails? (leave blank if not using Email auth)" "")
+EMAIL_FROM=$(prompt_for_value "EMAIL_FROM" "Email address from which auth emails will be sent? (leave blank if not using Email auth)" "")
 
 # Verify configuration validity
 if [ -z "$DOMAIN_NAME" ] || [ -z "$EMAIL" ]; then
