@@ -9,6 +9,11 @@
 #----------------------------#
 
 CONFIG_FILE="./config.env"
+USE_CUSTOM_CERTS="false"
+CERT_PATH=""
+KEY_PATH=""
+STORAGE_CERT_PATH=""
+STORAGE_KEY_PATH=""
 
 prompt_for_value() {
   local var_name="$1"
@@ -105,29 +110,84 @@ install_nginx() {
 }
 
 obtain_ssl_certificates() {
-  echo "Stopping Nginx temporarily for SSL certificate generation..."
-  sudo systemctl stop nginx
+  if [ "$USE_CUSTOM_CERTS" = "true" ]; then
+    echo "Using custom SSL certificates..."
+    
+    # Create directory for custom certificates
+    sudo mkdir -p /etc/nginx/certs
+    
+    # Copy custom certificates to Nginx certs directory
+    sudo cp "$CERT_PATH" /etc/nginx/certs/domain.crt
+    sudo cp "$KEY_PATH" /etc/nginx/certs/domain.key
+    sudo cp "$STORAGE_CERT_PATH" /etc/nginx/certs/storage.crt
+    sudo cp "$STORAGE_KEY_PATH" /etc/nginx/certs/storage.key
+    
+    # Set proper permissions
+    sudo chmod 644 /etc/nginx/certs/*.crt
+    sudo chmod 600 /etc/nginx/certs/*.key
+    
+    # Create SSL options file
+    if [ ! -f /etc/nginx/options-ssl-nginx.conf ]; then
+      echo "Creating SSL options file..."
+      sudo bash -c "cat > /etc/nginx/options-ssl-nginx.conf" <<EOL
+ssl_session_cache shared:le_nginx_SSL:10m;
+ssl_session_timeout 1440m;
+ssl_session_tickets off;
 
-  echo "Installing Certbot..."
-  sudo apt install certbot -y
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
 
-  echo "Obtaining SSL certificates..."
-  sudo certbot certonly --standalone -d "$DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL"
-  sudo certbot certonly --standalone -d "$STORAGE_DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL"
+ssl_ciphers "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384";
+EOL
+    fi
+    
+    # Generate Diffie-Hellman parameters
+    if [ ! -f /etc/nginx/ssl-dhparams.pem ]; then
+      echo "Generating Diffie-Hellman parameters..."
+      sudo openssl dhparam -out /etc/nginx/ssl-dhparams.pem 2048
+    fi
+  else
+    echo "Stopping Nginx temporarily for SSL certificate generation..."
+    sudo systemctl stop nginx
 
-  if [ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]; then
-    echo "Downloading options-ssl-nginx.conf..."
-    sudo wget https://raw.githubusercontent.com/certbot/certbot/main/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf -P /etc/letsencrypt/
-  fi
+    echo "Installing Certbot..."
+    sudo apt install certbot -y
 
-  if [ ! -f /etc/letsencrypt/ssl-dhparams.pem ]; then
-    echo "Generating Diffie-Hellman parameters..."
-    sudo openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+    echo "Obtaining SSL certificates..."
+    sudo certbot certonly --standalone -d "$DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL"
+    sudo certbot certonly --standalone -d "$STORAGE_DOMAIN_NAME" --non-interactive --agree-tos -m "$EMAIL"
+
+    if [ ! -f /etc/letsencrypt/options-ssl-nginx.conf ]; then
+      echo "Downloading options-ssl-nginx.conf..."
+      sudo wget https://raw.githubusercontent.com/certbot/certbot/main/certbot-nginx/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf -P /etc/letsencrypt/
+    fi
+
+    if [ ! -f /etc/letsencrypt/ssl-dhparams.pem ]; then
+      echo "Generating Diffie-Hellman parameters..."
+      sudo openssl dhparam -out /etc/letsencrypt/ssl-dhparams.pem 2048
+    fi
   fi
 }
 
 configure_nginx() {
   echo "Configuring Nginx..."
+
+  # Set certificate paths based on whether using custom certs or Let's Encrypt
+  if [ "$USE_CUSTOM_CERTS" = "true" ]; then
+    DOMAIN_CERT="/etc/nginx/certs/domain.crt"
+    DOMAIN_KEY="/etc/nginx/certs/domain.key"
+    STORAGE_CERT="/etc/nginx/certs/storage.crt"
+    STORAGE_KEY="/etc/nginx/certs/storage.key"
+    SSL_OPTIONS="/etc/nginx/options-ssl-nginx.conf"
+    SSL_DHPARAM="/etc/nginx/ssl-dhparams.pem"
+  else
+    DOMAIN_CERT="/etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem"
+    DOMAIN_KEY="/etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem"
+    STORAGE_CERT="/etc/letsencrypt/live/$STORAGE_DOMAIN_NAME/fullchain.pem"
+    STORAGE_KEY="/etc/letsencrypt/live/$STORAGE_DOMAIN_NAME/privkey.pem"
+    SSL_OPTIONS="/etc/letsencrypt/options-ssl-nginx.conf"
+    SSL_DHPARAM="/etc/letsencrypt/ssl-dhparams.pem"
+  fi
 
   sudo bash -c "cat > /etc/nginx/sites-available/tofupilot" <<EOL
 limit_req_zone \$binary_remote_addr zone=mylimit:10m rate=10r/s;
@@ -143,10 +203,10 @@ server {
     listen 443 ssl http2;
     server_name $DOMAIN_NAME;
 
-    ssl_certificate /etc/letsencrypt/live/$DOMAIN_NAME/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$DOMAIN_NAME/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    ssl_certificate $DOMAIN_CERT;
+    ssl_certificate_key $DOMAIN_KEY;
+    include $SSL_OPTIONS;
+    ssl_dhparam $SSL_DHPARAM;
 
     limit_req zone=mylimit burst=20 nodelay;
 
@@ -173,10 +233,10 @@ server {
     listen 443 ssl http2;
     server_name $STORAGE_DOMAIN_NAME;
 
-    ssl_certificate /etc/letsencrypt/live/$STORAGE_DOMAIN_NAME/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/$STORAGE_DOMAIN_NAME/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    ssl_certificate $STORAGE_CERT;
+    ssl_certificate_key $STORAGE_KEY;
+    include $SSL_OPTIONS;
+    ssl_dhparam $SSL_DHPARAM;
 
     location / {
         proxy_pass http://localhost:9000;
@@ -221,6 +281,30 @@ fi
 DOMAIN_NAME=$(prompt_for_value "DOMAIN_NAME" "Hostname for your TofuPilot?" "tofupilot.example.com")
 STORAGE_DOMAIN_NAME=$(prompt_for_value "STORAGE_DOMAIN_NAME" "Hostname for your TofuPilot storage?" "storage.$DOMAIN_NAME")
 EMAIL=$(prompt_for_value "EMAIL" "Email address associated with your domain (for SSL)?" "me@example.com")
+
+# Ask if user wants to use custom SSL certificates
+read -r -p "Do you want to use custom SSL certificates? (y/N): " use_custom_certs_input
+if [[ "$use_custom_certs_input" =~ ^[Yy]$ ]]; then
+  USE_CUSTOM_CERTS="true"
+  read -r -p "Path to SSL certificate for $DOMAIN_NAME: " CERT_PATH
+  read -r -p "Path to SSL private key for $DOMAIN_NAME: " KEY_PATH
+  read -r -p "Path to SSL certificate for $STORAGE_DOMAIN_NAME (leave empty if same as main domain): " STORAGE_CERT_PATH
+  read -r -p "Path to SSL private key for $STORAGE_DOMAIN_NAME (leave empty if same as main domain): " STORAGE_KEY_PATH
+  
+  # If storage certificates not provided, use the same as main domain
+  if [ -z "$STORAGE_CERT_PATH" ]; then
+    STORAGE_CERT_PATH="$CERT_PATH"
+  fi
+  if [ -z "$STORAGE_KEY_PATH" ]; then
+    STORAGE_KEY_PATH="$KEY_PATH"
+  fi
+  
+  # Validate that certificate files exist
+  if [ ! -f "$CERT_PATH" ] || [ ! -f "$KEY_PATH" ] || [ ! -f "$STORAGE_CERT_PATH" ] || [ ! -f "$STORAGE_KEY_PATH" ]; then
+    echo "Error: One or more certificate files not found. Please check the paths and try again."
+    exit 1
+  fi
+fi
 
 GOOGLE_CLIENT_ID=$(prompt_for_value "GOOGLE_CLIENT_ID" "Google Client ID? (leave blank if not using Google auth)" "")
 GOOGLE_CLIENT_SECRET=$(prompt_for_value "GOOGLE_CLIENT_SECRET" "Google Client Secret? (leave blank if not using Google auth)" "")
