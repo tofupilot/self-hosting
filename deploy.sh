@@ -14,6 +14,7 @@ CERT_PATH=""
 KEY_PATH=""
 STORAGE_CERT_PATH=""
 STORAGE_KEY_PATH=""
+AUTO_DEPLOY="false" # Default to interactive mode
 
 prompt_for_value() {
   local var_name="$1"
@@ -28,6 +29,13 @@ prompt_for_value() {
       echo "$existing_value" # Returning existing value
       return
     fi
+  fi
+
+  # If AUTO_DEPLOY is true, use default value without prompting
+  if [ "$AUTO_DEPLOY" = "true" ]; then
+    echo "$default_value"
+    echo "${var_name}=${default_value}" >> "$CONFIG_FILE"
+    return
   fi
 
   # Prompting user if value not found
@@ -272,9 +280,42 @@ run_docker_compose() {
 #         Main Script        #
 #----------------------------#
 
+# Check for non-interactive mode flag
+while getopts ":a" opt; do
+  case ${opt} in
+    a ) # Auto-deploy mode
+      AUTO_DEPLOY="true"
+      ;;
+    \? )
+      echo "Invalid option: $OPTARG" 1>&2
+      ;;
+    : )
+      echo "Invalid option: $OPTARG requires an argument" 1>&2
+      ;;
+  esac
+done
+shift $((OPTIND -1))
+
 # Create config file if does not exist
 if [ ! -f "$CONFIG_FILE" ]; then
   touch "$CONFIG_FILE"
+fi
+
+# If auto-deploy, ensure all required values are in config.env
+if [ "$AUTO_DEPLOY" = "true" ]; then
+  echo "Running in automatic deployment mode. All values will be read from config.env"
+  
+  # Verify config.env exists and has required values
+  if [ ! -f "$CONFIG_FILE" ]; then
+    echo "Error: config.env file not found. In auto-deploy mode, this file must exist with all required values."
+    exit 1
+  fi
+  
+  # Check for at least domain name and email
+  if ! grep -q "^DOMAIN_NAME=" "$CONFIG_FILE" || ! grep -q "^EMAIL=" "$CONFIG_FILE"; then
+    echo "Error: DOMAIN_NAME and EMAIL must be specified in config.env for auto-deploy mode."
+    exit 1
+  fi
 fi
 
 # Prompting user for necessary environment variables
@@ -282,24 +323,53 @@ DOMAIN_NAME=$(prompt_for_value "DOMAIN_NAME" "Hostname for your TofuPilot?" "tof
 STORAGE_DOMAIN_NAME=$(prompt_for_value "STORAGE_DOMAIN_NAME" "Hostname for your TofuPilot storage?" "storage.$DOMAIN_NAME")
 EMAIL=$(prompt_for_value "EMAIL" "Email address associated with your domain (for SSL)?" "me@example.com")
 
-# Ask if user wants to use custom SSL certificates
-read -r -p "Do you want to use custom SSL certificates? (y/N): " use_custom_certs_input
-if [[ "$use_custom_certs_input" =~ ^[Yy]$ ]]; then
-  USE_CUSTOM_CERTS="true"
-  read -r -p "Path to SSL certificate for $DOMAIN_NAME: " CERT_PATH
-  read -r -p "Path to SSL private key for $DOMAIN_NAME: " KEY_PATH
-  read -r -p "Path to SSL certificate for $STORAGE_DOMAIN_NAME (leave empty if same as main domain): " STORAGE_CERT_PATH
-  read -r -p "Path to SSL private key for $STORAGE_DOMAIN_NAME (leave empty if same as main domain): " STORAGE_KEY_PATH
+# Handle custom SSL certificates
+if [ "$AUTO_DEPLOY" = "true" ]; then
+  # Read values from config.env
+  if [ -f "$CONFIG_FILE" ]; then
+    USE_CUSTOM_CERTS=$(grep "^USE_CUSTOM_CERTS=" "$CONFIG_FILE" | cut -d= -f2- || echo "false")
+    CERT_PATH=$(grep "^CERT_PATH=" "$CONFIG_FILE" | cut -d= -f2- || echo "")
+    KEY_PATH=$(grep "^KEY_PATH=" "$CONFIG_FILE" | cut -d= -f2- || echo "")
+    STORAGE_CERT_PATH=$(grep "^STORAGE_CERT_PATH=" "$CONFIG_FILE" | cut -d= -f2- || echo "")
+    STORAGE_KEY_PATH=$(grep "^STORAGE_KEY_PATH=" "$CONFIG_FILE" | cut -d= -f2- || echo "")
   
-  # If storage certificates not provided, use the same as main domain
-  if [ -z "$STORAGE_CERT_PATH" ]; then
-    STORAGE_CERT_PATH="$CERT_PATH"
+    # If storage certificates not provided, use the same as main domain
+    if [ -z "$STORAGE_CERT_PATH" ]; then
+      STORAGE_CERT_PATH="$CERT_PATH"
+    fi
+    if [ -z "$STORAGE_KEY_PATH" ]; then
+      STORAGE_KEY_PATH="$KEY_PATH"
+    fi
   fi
-  if [ -z "$STORAGE_KEY_PATH" ]; then
-    STORAGE_KEY_PATH="$KEY_PATH"
+else
+  # Ask if user wants to use custom SSL certificates
+  read -r -p "Do you want to use custom SSL certificates? (y/N): " use_custom_certs_input
+  if [[ "$use_custom_certs_input" =~ ^[Yy]$ ]]; then
+    USE_CUSTOM_CERTS="true"
+    read -r -p "Path to SSL certificate for $DOMAIN_NAME: " CERT_PATH
+    read -r -p "Path to SSL private key for $DOMAIN_NAME: " KEY_PATH
+    read -r -p "Path to SSL certificate for $STORAGE_DOMAIN_NAME (leave empty if same as main domain): " STORAGE_CERT_PATH
+    read -r -p "Path to SSL private key for $STORAGE_DOMAIN_NAME (leave empty if same as main domain): " STORAGE_KEY_PATH
+    
+    # Save to config.env
+    echo "USE_CUSTOM_CERTS=true" >> "$CONFIG_FILE"
+    echo "CERT_PATH=$CERT_PATH" >> "$CONFIG_FILE"
+    echo "KEY_PATH=$KEY_PATH" >> "$CONFIG_FILE"
+    echo "STORAGE_CERT_PATH=$STORAGE_CERT_PATH" >> "$CONFIG_FILE"
+    echo "STORAGE_KEY_PATH=$STORAGE_KEY_PATH" >> "$CONFIG_FILE"
+    
+    # If storage certificates not provided, use the same as main domain
+    if [ -z "$STORAGE_CERT_PATH" ]; then
+      STORAGE_CERT_PATH="$CERT_PATH"
+    fi
+    if [ -z "$STORAGE_KEY_PATH" ]; then
+      STORAGE_KEY_PATH="$KEY_PATH"
+    fi
   fi
-  
-  # Validate that certificate files exist
+fi
+
+# Validate that certificate files exist if using custom certs
+if [ "$USE_CUSTOM_CERTS" = "true" ]; then
   if [ ! -f "$CERT_PATH" ] || [ ! -f "$KEY_PATH" ] || [ ! -f "$STORAGE_CERT_PATH" ] || [ ! -f "$STORAGE_KEY_PATH" ]; then
     echo "Error: One or more certificate files not found. Please check the paths and try again."
     exit 1
