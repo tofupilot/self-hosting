@@ -268,10 +268,10 @@ EOL
 
 run_docker_compose() {
   echo "Building and starting Docker containers..."
-  docker-compose up -d
+  docker compose up -d
 
-  if ! sudo docker-compose ps | grep "Up"; then
-    echo "Docker containers failed to start. Check logs with 'docker-compose logs'."
+  if ! sudo docker compose ps | grep "Up"; then
+    echo "Docker containers failed to start. Check logs with 'docker compose logs'."
     exit 1
   fi
 }
