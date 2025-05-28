@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # Reverse proxy with automatic SSL
+  traefik:
+    image: traefik:v3.0
+    container_name: tofupilot-traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/acme.json
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL}
+
+  # TofuPilot Application
+  app:
+    image: ghcr.io/tofupilot/tofupilot:latest
+    container_name: tofupilot-app
+    restart: unless-stopped
+    depends_on:
+      - database
+      - storage
+    environment:
+      - NEXT_PUBLIC_DOMAIN_NAME=${DOMAIN_NAME}
+      - NEXTAUTH_URL=https://${DOMAIN_NAME}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
+      - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
+      - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
+      - STORAGE_INTERNAL_ENDPOINT_URL=http://storage:9000
+      - BUCKET_NAME=tofupilot
+      - REGION=us-east-1
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
+      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
+      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+
+  # Database
+  database:
+    image: edgedb/edgedb:latest
+    container_name: tofupilot-database
+    restart: unless-stopped
+    environment:
+      - EDGEDB_SERVER_USER=edgedb
+      - EDGEDB_SERVER_PASSWORD=${EDGEDB_PASSWORD}
+      - EDGEDB_SERVER_DATABASE=edgedb
+    volumes:
+      - database-data:/var/lib/edgedb/data
+    ports:
+      - "127.0.0.1:5656:5656"
+
+  # Object Storage (MinIO)
+  storage:
+    image: minio/minio:latest
+    container_name: tofupilot-storage
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    volumes:
+      - storage-data:/data
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
+      - "traefik.http.routers.storage.entrypoints=websecure"
+      - "traefik.http.routers.storage.tls.certresolver=letsencrypt"
+      - "traefik.http.services.storage.loadbalancer.server.port=9000"
+
+volumes:
+  database-data:
+  storage-data:
+  traefik-acme:
