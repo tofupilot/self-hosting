@@ -321,7 +321,7 @@ fi
 # Prompting user for necessary environment variables
 DOMAIN_NAME=$(prompt_for_value "DOMAIN_NAME" "Hostname for your TofuPilot?" "tofupilot.example.com")
 STORAGE_DOMAIN_NAME=$(prompt_for_value "STORAGE_DOMAIN_NAME" "Hostname for your TofuPilot storage?" "storage.$DOMAIN_NAME")
-EMAIL=$(prompt_for_value "EMAIL" "Email address associated with your domain (for SSL)?" "me@example.com")
+EMAIL=$(prompt_for_value "EMAIL" "Email address associated with your domain (for SSL)?" "your-email@tp-example.com")
 
 # Handle custom SSL certificates
 if [ "$AUTO_DEPLOY" = "true" ]; then
