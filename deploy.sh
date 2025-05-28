@@ -14,7 +14,6 @@ ENV_FILE="$SCRIPT_DIR/.env"
 # Colours for output
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
 
-
 #----------------------------#
 #         Functions          #
 #----------------------------#
@@ -25,17 +24,6 @@ info(){ echo -e "${BLUE}[INFO] $1${NC}"; }
 
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
-
-
-# Check if command exists
-command_exists() {
-    command -v "$1" >/dev/null 2>&1
-}
-
-# Generate secure random password
-generate_password() {
-    openssl rand -base64 32 | tr -d "=+/" | cut -c1-25
-}
 
 # Prompt for input with optional default and secret mode
 prompt() {
@@ -153,7 +141,7 @@ check_requirements() {
         log "Docker Compose found ✓"
     fi
     
-    # Check if ports are available (handle cases where netstat might not exist)
+    # Check if ports are available
     info "Checking port availability (80, 443)..."
     if command_exists netstat && sudo netstat -tlnp 2>/dev/null | grep -E ':80|:443' >/dev/null 2>&1; then
         warn "Ports 80 or 443 appear to be in use. This might cause issues."
@@ -163,7 +151,7 @@ check_requirements() {
         log "Ports 80/443 available ✓"
     fi
     
-    # Check system architecture and warn about compatibility
+    # Check system architecture
     info "Checking system architecture..."
     ARCH=$(uname -m)
     if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
@@ -181,11 +169,126 @@ check_requirements() {
     fi
 }
 
-# Create Docker Compose file
+# Create Docker Compose file with fixed labels
 create_compose_file() {
   log "Creating Docker Compose configuration..."
 
-cat > "$COMPOSE_FILE" <<'EOF'
+  # Determine if we're in local mode
+  local IS_LOCAL_MODE="false"
+  if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
+    IS_LOCAL_MODE="true"
+  fi
+
+  if [[ "$IS_LOCAL_MODE" == "true" ]]; then
+    # Local mode without SSL
+    cat > "$COMPOSE_FILE" <<'EOF'
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: tofupilot-traefik
+    restart: unless-stopped
+    command:
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme.json:/acme.json
+    networks:
+      - web
+
+  app:
+    image: ghcr.io/tofupilot/tofupilot:latest
+    platform: linux/amd64
+    container_name: tofupilot-app
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - database
+      - storage
+    environment:
+      - NEXT_PUBLIC_DOMAIN_NAME=${DOMAIN_NAME}
+      - NEXTAUTH_URL=http://${DOMAIN_NAME}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
+      - EDGEDB_CLIENT_TLS_SECURITY=insecure
+      - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
+      - STORAGE_EXTERNAL_ENDPOINT_URL=http://${STORAGE_DOMAIN_NAME}
+      - STORAGE_INTERNAL_ENDPOINT_URL=http://storage:9000
+      - BUCKET_NAME=tofupilot
+      - REGION=us-east-1
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
+      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
+      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.app.entrypoints=web"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+    networks:
+      - web
+
+  database:
+    image: edgedb/edgedb:latest
+    container_name: tofupilot-database
+    restart: unless-stopped
+    environment:
+      - EDGEDB_SERVER_SECURITY=insecure_dev_mode
+      - EDGEDB_SERVER_PASSWORD=${EDGEDB_PASSWORD}
+    volumes:
+      - database-data:/var/lib/edgedb/data
+    ports:
+      - "127.0.0.1:5656:5656"
+    networks:
+      - web
+
+  storage:
+    image: minio/minio:latest
+    container_name: tofupilot-storage
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    volumes:
+      - storage-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
+      - "traefik.http.routers.storage.entrypoints=web"
+      - "traefik.http.services.storage.loadbalancer.server.port=9000"
+    networks:
+      - web
+
+volumes:
+  database-data:
+  storage-data:
+
+networks:
+  web:
+    driver: bridge
+
+EOF
+  else
+    # Production mode with SSL
+    cat > "$COMPOSE_FILE" <<'EOF'
 version: '3.8'
 
 services:
@@ -201,7 +304,7 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
     ports:
@@ -209,7 +312,7 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-acme:/acme.json
+      - traefik-acme:/acme
     environment:
       - ACME_EMAIL=${ACME_EMAIL}
 
@@ -228,7 +331,7 @@ services:
       - NEXTAUTH_URL=https://${DOMAIN_NAME}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
-      - EDGEDB_CLIENT_TLS_SECURITY=insecure        # ★ NEW – let client accept self-signed cert
+      - EDGEDB_CLIENT_TLS_SECURITY=insecure
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
@@ -246,11 +349,11 @@ services:
       - SMTP_PASSWORD=${SMTP_PASSWORD:-}
       - EMAIL_FROM=${EMAIL_FROM:-}
     labels:
-      - 'traefik.enable=true'
-      - 'traefik.http.routers.app.rule=Host(\`${DOMAIN_NAME}\`)'
-      - 'traefik.http.routers.app.entrypoints=websecure'
-      - 'traefik.http.routers.app.tls.certresolver=letsencrypt'
-      - 'traefik.http.services.app.loadbalancer.server.port=3000'
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(\`${DOMAIN_NAME}\`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
 
   database:
     image: edgedb/edgedb:latest
@@ -276,7 +379,7 @@ services:
       - storage-data:/data
     labels:
       - "traefik.enable=true"
-      - 'traefik.http.routers.storage.rule=Host(\`${STORAGE_DOMAIN_NAME}\`)'
+      - "traefik.http.routers.storage.rule=Host(\`${STORAGE_DOMAIN_NAME}\`)"
       - "traefik.http.routers.storage.entrypoints=websecure"
       - "traefik.http.routers.storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.storage.loadbalancer.server.port=9000"
@@ -286,6 +389,15 @@ volumes:
   storage-data:
   traefik-acme:
 EOF
+  fi
+
+  # Initialize ACME volume with correct permissions
+  if [[ "$IS_LOCAL_MODE" == "false" ]]; then
+    log "Setting up SSL certificate storage..."
+    docker volume create traefik-acme 2>/dev/null || true
+    docker run --rm -v traefik-acme:/acme alpine sh -c "touch /acme/acme.json && chmod 600 /acme/acme.json" 2>/dev/null || true
+  fi
+
   log "Docker Compose file created ✓"
 }
 
@@ -332,23 +444,10 @@ EOF
 collect_config() {
     log "Collecting configuration..."
     
-    # Debug CONFIG_FILE path
-    echo "DEBUG: CONFIG_FILE variable is: '$CONFIG_FILE'"
-    echo "DEBUG: Current directory: $(pwd)"
-    echo "DEBUG: SCRIPT_DIR is: '$SCRIPT_DIR'"
-    
     # Remove old config to start fresh
-    echo "DEBUG: About to remove config file..."
     if [ -f "$CONFIG_FILE" ]; then
-        echo "DEBUG: Config file exists, removing it..."
         rm -f "$CONFIG_FILE"
-        echo "DEBUG: Config file removed"
-    else
-        echo "DEBUG: Config file does not exist, nothing to remove"
     fi
-    echo "DEBUG: Config file removal step completed"
-    
-    echo "DEBUG: Config file exists after removal: $([ -f "$CONFIG_FILE" ] && echo "YES" || echo "NO")"
     
     echo
     if [ "$LOCAL_MODE" = "true" ]; then
@@ -461,7 +560,7 @@ collect_config() {
         1)
             if [ "$LOCAL_MODE" = "true" ]; then
                 info "✓ Skipping authentication for local testing"
-                AUTH_CONFIGURED=true  # Allow skip for local mode
+                AUTH_CONFIGURED=true
             else
                 info "Configuring Google OAuth..."
                 echo -n "Google OAuth Client ID: "
@@ -480,93 +579,56 @@ collect_config() {
             fi
             ;;
         2)
-            if [ "$LOCAL_MODE" = "true" ]; then
-                info "Configuring Google OAuth..."
-                echo -n "Google OAuth Client ID: "
-                read GOOGLE_CLIENT_ID
-                if [ -n "$GOOGLE_CLIENT_ID" ]; then
-                    echo -n "Google OAuth Client Secret: "
-                    read -s GOOGLE_CLIENT_SECRET
-                    echo
-                    if [ -n "$GOOGLE_CLIENT_SECRET" ]; then
-                        AUTH_CONFIGURED=true
-                        info "✓ Google OAuth configured"
-                        echo "GOOGLE_CLIENT_ID=\"${GOOGLE_CLIENT_ID}\"" >> "$CONFIG_FILE"
-                        echo "GOOGLE_CLIENT_SECRET=\"${GOOGLE_CLIENT_SECRET}\"" >> "$CONFIG_FILE"
-                    fi
-                fi
-            else
-                info "Configuring Azure AD..."
-                echo -n "Azure AD Client ID: "
-                read AZURE_AD_CLIENT_ID
-                if [ -n "$AZURE_AD_CLIENT_ID" ]; then
-                    echo -n "Azure AD Client Secret: "
-                    read -s AZURE_AD_CLIENT_SECRET
-                    echo
-                    echo -n "Azure AD Tenant ID: "
-                    read AZURE_AD_TENANT_ID
-                    if [ -n "$AZURE_AD_CLIENT_SECRET" ] && [ -n "$AZURE_AD_TENANT_ID" ]; then
-                        AUTH_CONFIGURED=true
-                        info "✓ Azure AD configured"
-                        echo "AZURE_AD_CLIENT_ID=\"${AZURE_AD_CLIENT_ID}\"" >> "$CONFIG_FILE"
-                        echo "AZURE_AD_CLIENT_SECRET=\"${AZURE_AD_CLIENT_SECRET}\"" >> "$CONFIG_FILE"
-                        echo "AZURE_AD_TENANT_ID=\"${AZURE_AD_TENANT_ID}\"" >> "$CONFIG_FILE"
-                    fi
+            info "Configuring Azure AD..."
+            echo -n "Azure AD Client ID: "
+            read AZURE_AD_CLIENT_ID
+            if [ -n "$AZURE_AD_CLIENT_ID" ]; then
+                echo -n "Azure AD Client Secret: "
+                read -s AZURE_AD_CLIENT_SECRET
+                echo
+                echo -n "Azure AD Tenant ID: "
+                read AZURE_AD_TENANT_ID
+                if [ -n "$AZURE_AD_CLIENT_SECRET" ] && [ -n "$AZURE_AD_TENANT_ID" ]; then
+                    AUTH_CONFIGURED=true
+                    info "✓ Azure AD configured"
+                    echo "AZURE_AD_CLIENT_ID=\"${AZURE_AD_CLIENT_ID}\"" >> "$CONFIG_FILE"
+                    echo "AZURE_AD_CLIENT_SECRET=\"${AZURE_AD_CLIENT_SECRET}\"" >> "$CONFIG_FILE"
+                    echo "AZURE_AD_TENANT_ID=\"${AZURE_AD_TENANT_ID}\"" >> "$CONFIG_FILE"
                 fi
             fi
             ;;
         3)
-            if [ "$LOCAL_MODE" = "true" ]; then
-                info "Configuring Azure AD..."
-                echo -n "Azure AD Client ID: "
-                read AZURE_AD_CLIENT_ID
-                if [ -n "$AZURE_AD_CLIENT_ID" ]; then
-                    echo -n "Azure AD Client Secret: "
-                    read -s AZURE_AD_CLIENT_SECRET
-                    echo
-                    echo -n "Azure AD Tenant ID: "
-                    read AZURE_AD_TENANT_ID
-                    if [ -n "$AZURE_AD_CLIENT_SECRET" ] && [ -n "$AZURE_AD_TENANT_ID" ]; then
-                        AUTH_CONFIGURED=true
-                        info "✓ Azure AD configured"
-                        echo "AZURE_AD_CLIENT_ID=\"${AZURE_AD_CLIENT_ID}\"" >> "$CONFIG_FILE"
-                        echo "AZURE_AD_CLIENT_SECRET=\"${AZURE_AD_CLIENT_SECRET}\"" >> "$CONFIG_FILE"
-                        echo "AZURE_AD_TENANT_ID=\"${AZURE_AD_TENANT_ID}\"" >> "$CONFIG_FILE"
-                    fi
+            info "Configuring Email authentication..."
+            echo -n "SMTP server hostname: "
+            read SMTP_HOST
+            if [ -n "$SMTP_HOST" ]; then
+                echo -n "SMTP port [587]: "
+                read SMTP_PORT
+                if [ -z "$SMTP_PORT" ]; then
+                    SMTP_PORT="587"
                 fi
-            else
-                info "Configuring Email authentication..."
-                echo -n "SMTP server hostname: "
-                read SMTP_HOST
-                if [ -n "$SMTP_HOST" ]; then
-                    echo -n "SMTP port [587]: "
-                    read SMTP_PORT
-                    if [ -z "$SMTP_PORT" ]; then
-                        SMTP_PORT="587"
-                    fi
-                    
-                    echo -n "SMTP username: "
-                    read SMTP_USER
-                    
-                    echo -n "SMTP password: "
-                    read -s SMTP_PASSWORD
-                    echo
-                    
-                    echo -n "From email address [${ACME_EMAIL}]: "
-                    read EMAIL_FROM
-                    if [ -z "$EMAIL_FROM" ]; then
-                        EMAIL_FROM="$ACME_EMAIL"
-                    fi
-                    
-                    if [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ] && [ -n "$EMAIL_FROM" ]; then
-                        AUTH_CONFIGURED=true
-                        info "✓ Email authentication configured"
-                        echo "SMTP_HOST=\"${SMTP_HOST}\"" >> "$CONFIG_FILE"
-                        echo "SMTP_PORT=\"${SMTP_PORT}\"" >> "$CONFIG_FILE"
-                        echo "SMTP_USER=\"${SMTP_USER}\"" >> "$CONFIG_FILE"
-                        echo "SMTP_PASSWORD=\"${SMTP_PASSWORD}\"" >> "$CONFIG_FILE"
-                        echo "EMAIL_FROM=\"${EMAIL_FROM}\"" >> "$CONFIG_FILE"
-                    fi
+                
+                echo -n "SMTP username: "
+                read SMTP_USER
+                
+                echo -n "SMTP password: "
+                read -s SMTP_PASSWORD
+                echo
+                
+                echo -n "From email address [${ACME_EMAIL}]: "
+                read EMAIL_FROM
+                if [ -z "$EMAIL_FROM" ]; then
+                    EMAIL_FROM="$ACME_EMAIL"
+                fi
+                
+                if [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ] && [ -n "$EMAIL_FROM" ]; then
+                    AUTH_CONFIGURED=true
+                    info "✓ Email authentication configured"
+                    echo "SMTP_HOST=\"${SMTP_HOST}\"" >> "$CONFIG_FILE"
+                    echo "SMTP_PORT=\"${SMTP_PORT}\"" >> "$CONFIG_FILE"
+                    echo "SMTP_USER=\"${SMTP_USER}\"" >> "$CONFIG_FILE"
+                    echo "SMTP_PASSWORD=\"${SMTP_PASSWORD}\"" >> "$CONFIG_FILE"
+                    echo "EMAIL_FROM=\"${EMAIL_FROM}\"" >> "$CONFIG_FILE"
                 fi
             fi
             ;;
@@ -636,6 +698,11 @@ collect_config() {
 # Deploy the application
 deploy() {
     log "Starting deployment..."
+    
+    # Source the config file to load variables
+    if [ -f "$CONFIG_FILE" ]; then
+        source "$CONFIG_FILE"
+    fi
     
     # Create configuration files
     log "⚙️  Setting up configuration files..."
@@ -924,13 +991,20 @@ show_info() {
     echo "=================================="
     echo
     info "Your TofuPilot instance is available at:"
-    echo "  Main app: https://${DOMAIN_NAME}"
-    echo "  Storage:  https://${STORAGE_DOMAIN_NAME}"
+    if [ "$LOCAL_MODE" = "true" ]; then
+        echo "  Main app: http://${DOMAIN_NAME}"
+        echo "  Storage:  http://${STORAGE_DOMAIN_NAME}"
+    else
+        echo "  Main app: https://${DOMAIN_NAME}"
+        echo "  Storage:  https://${STORAGE_DOMAIN_NAME}"
+    fi
     echo
-    warn "Make sure your DNS is pointing:"
-    echo "  ${DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
-    echo "  ${STORAGE_DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
-    echo
+    if [ "$LOCAL_MODE" = "false" ]; then
+        warn "Make sure your DNS is pointing:"
+        echo "  ${DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
+        echo "  ${STORAGE_DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
+        echo
+    fi
     info "Useful commands:"
     echo "  View logs:    docker-compose logs -f"
     echo "  Stop:         docker-compose down"
@@ -951,10 +1025,18 @@ show_info() {
     echo
     warn "Configure your authentication providers:"
     if [ -n "$GOOGLE_CLIENT_ID" ]; then
-        echo "  Google OAuth: Add https://${DOMAIN_NAME}/api/auth/callback/google as redirect URI"
+        if [ "$LOCAL_MODE" = "true" ]; then
+            echo "  Google OAuth: Add http://${DOMAIN_NAME}/api/auth/callback/google as redirect URI"
+        else
+            echo "  Google OAuth: Add https://${DOMAIN_NAME}/api/auth/callback/google as redirect URI"
+        fi
     fi
     if [ -n "$AZURE_AD_CLIENT_ID" ]; then
-        echo "  Azure AD: Add https://${DOMAIN_NAME}/api/auth/callback/azure-ad as redirect URI"
+        if [ "$LOCAL_MODE" = "true" ]; then
+            echo "  Azure AD: Add http://${DOMAIN_NAME}/api/auth/callback/azure-ad as redirect URI"
+        else
+            echo "  Azure AD: Add https://${DOMAIN_NAME}/api/auth/callback/azure-ad as redirect URI"
+        fi
     fi
     if [ -n "$SMTP_HOST" ]; then
         echo "  Email auth: Configured with ${SMTP_HOST}"
