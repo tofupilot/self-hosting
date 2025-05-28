@@ -11,32 +11,21 @@ CONFIG_FILE="$SCRIPT_DIR/.tofupilot.conf"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Colours for output
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+
 
 #----------------------------#
 #         Functions          #
 #----------------------------#
-log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
-}
+log(){ echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"; }
+warn(){ echo -e "${YELLOW}[WARNING] $1${NC}"; }
+error(){ echo -e "${RED}[ERROR] $1${NC}"; exit 1; }
+info(){ echo -e "${BLUE}[INFO] $1${NC}"; }
 
-warn() {
-    echo -e "${YELLOW}[WARNING] $1${NC}"
-}
+command_exists(){ command -v "$1" >/dev/null 2>&1; }
+generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
-error() {
-    echo -e "${RED}[ERROR] $1${NC}"
-    exit 1
-}
-
-info() {
-    echo -e "${BLUE}[INFO] $1${NC}"
-}
 
 # Check if command exists
 command_exists() {
@@ -194,13 +183,12 @@ check_requirements() {
 
 # Create Docker Compose file
 create_compose_file() {
-    log "Creating Docker Compose configuration..."
-    
-    cat > "$COMPOSE_FILE" <<EOF
+  log "Creating Docker Compose configuration..."
+
+cat > "$COMPOSE_FILE" <<'EOF'
 version: '3.8'
 
 services:
-  # Reverse proxy with automatic SSL
   traefik:
     image: traefik:v3.0
     container_name: tofupilot-traefik
@@ -212,7 +200,7 @@ services:
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=\${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
@@ -223,73 +211,72 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik-acme:/acme.json
     environment:
-      - ACME_EMAIL=\${ACME_EMAIL}
+      - ACME_EMAIL=${ACME_EMAIL}
 
-  # TofuPilot Application
   app:
     image: ghcr.io/tofupilot/tofupilot:latest
     platform: linux/amd64
     container_name: tofupilot-app
+    ports:
+      - "3000:3000"
     restart: unless-stopped
     depends_on:
       - database
       - storage
     environment:
-      - NEXT_PUBLIC_DOMAIN_NAME=\${DOMAIN_NAME}
-      - NEXTAUTH_URL=https://\${DOMAIN_NAME}
-      - NEXTAUTH_SECRET=\${NEXTAUTH_SECRET}
-      - EDGEDB_DSN=edgedb://edgedb:\${EDGEDB_PASSWORD}@database:5656/edgedb
-      - AWS_ACCESS_KEY_ID=\${MINIO_ACCESS_KEY}
-      - AWS_SECRET_ACCESS_KEY=\${MINIO_SECRET_KEY}
-      - STORAGE_EXTERNAL_ENDPOINT_URL=https://\${STORAGE_DOMAIN_NAME}
+      - NEXT_PUBLIC_DOMAIN_NAME=${DOMAIN_NAME}
+      - NEXTAUTH_URL=https://${DOMAIN_NAME}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
+      - EDGEDB_CLIENT_TLS_SECURITY=insecure        # ★ NEW – let client accept self-signed cert
+      - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
+      - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
+      - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
       - STORAGE_INTERNAL_ENDPOINT_URL=http://storage:9000
       - BUCKET_NAME=tofupilot
       - REGION=us-east-1
-      - GOOGLE_CLIENT_ID=\${GOOGLE_CLIENT_ID:-}
-      - GOOGLE_CLIENT_SECRET=\${GOOGLE_CLIENT_SECRET:-}
-      - AZURE_AD_CLIENT_ID=\${AZURE_AD_CLIENT_ID:-}
-      - AZURE_AD_CLIENT_SECRET=\${AZURE_AD_CLIENT_SECRET:-}
-      - AZURE_AD_TENANT_ID=\${AZURE_AD_TENANT_ID:-}
-      - SMTP_HOST=\${SMTP_HOST:-}
-      - SMTP_PORT=\${SMTP_PORT:-587}
-      - SMTP_USER=\${SMTP_USER:-}
-      - SMTP_PASSWORD=\${SMTP_PASSWORD:-}
-      - EMAIL_FROM=\${EMAIL_FROM:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
+      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
+      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - EMAIL_FROM=${EMAIL_FROM:-}
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(\`\${DOMAIN_NAME}\`)"
-      - "traefik.http.routers.app.entrypoints=websecure"
-      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
-      - "traefik.http.services.app.loadbalancer.server.port=3000"
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.app.rule=Host(\`${DOMAIN_NAME}\`)'
+      - 'traefik.http.routers.app.entrypoints=websecure'
+      - 'traefik.http.routers.app.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.app.loadbalancer.server.port=3000'
 
-  # Database
   database:
     image: edgedb/edgedb:latest
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - EDGEDB_SERVER_USER=edgedb
-      - EDGEDB_SERVER_PASSWORD=\${EDGEDB_PASSWORD}
-      - EDGEDB_SERVER_DATABASE=edgedb
+      - EDGEDB_SERVER_SECURITY=insecure_dev_mode
+      - EDGEDB_SERVER_PASSWORD=${EDGEDB_PASSWORD}
     volumes:
       - database-data:/var/lib/edgedb/data
     ports:
       - "127.0.0.1:5656:5656"
 
-  # Object Storage (MinIO)
   storage:
     image: minio/minio:latest
     container_name: tofupilot-storage
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=\${MINIO_ACCESS_KEY}
-      - MINIO_ROOT_PASSWORD=\${MINIO_SECRET_KEY}
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
     volumes:
       - storage-data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.storage.rule=Host(\`\${STORAGE_DOMAIN_NAME}\`)"
+      - 'traefik.http.routers.storage.rule=Host(\`${STORAGE_DOMAIN_NAME}\`)'
       - "traefik.http.routers.storage.entrypoints=websecure"
       - "traefik.http.routers.storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.storage.loadbalancer.server.port=9000"
@@ -299,7 +286,7 @@ volumes:
   storage-data:
   traefik-acme:
 EOF
-    log "Docker Compose file created ✓"
+  log "Docker Compose file created ✓"
 }
 
 # Create environment file
