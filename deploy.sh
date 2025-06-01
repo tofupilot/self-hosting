@@ -764,36 +764,22 @@ deploy() {
                 echo "You need a GitHub Personal Access Token with 'read:packages' permission."
                 echo "Create one at: https://github.com/settings/tokens"
                 echo
-                echo -n "GitHub username: "
+                echo -n "GitHub Username: "
                 read github_username
+                
+                echo -n "GitHub Personal Access Token: "
+                read -s github_token
                 echo
-                echo "GitHub Personal Access Token:"
-                echo "(Note: Text will be hidden for security - paste your token and press Enter)"
-                echo -n "Token: "
-                # Use a more reliable method for reading the token
-                if command -v stty >/dev/null 2>&1; then
-                    # Save current terminal settings
-                    old_stty_cfg=$(stty -g)
-                    # Turn off echo
-                    stty -echo
-                    read github_token
-                    # Restore terminal settings
-                    stty "$old_stty_cfg"
-                    echo
-                else
-                    # Fallback for systems without stty
-                    read github_token
+                
+                if [ -z "$github_username" ] || [ -z "$github_token" ]; then
+                    error "Username and token are required"
                 fi
                 
-                if [ -n "$github_username" ] && [ -n "$github_token" ]; then
-                    info "Logging into GitHub Container Registry..."
-                    if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin; then
-                        log "Successfully logged into GitHub Container Registry ✓"
-                    else
-                        error "Failed to login to GitHub Container Registry. Please check your credentials."
-                    fi
+                info "Logging into GitHub Container Registry..."
+                if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin; then
+                    log "Successfully logged into GitHub Container Registry ✓"
                 else
-                    error "Username and token are required."
+                    error "Failed to login to GitHub Container Registry. Please check your credentials."
                 fi
                 ;;
             2)
