@@ -707,11 +707,7 @@ collect_config() {
 deploy() {
     log "Starting deployment..."
     
-    # Source the config file to load variables
-    if [ -f "$CONFIG_FILE" ]; then
-        source "$CONFIG_FILE"
-    fi
-    
+    # Configuration variables are already loaded in main script
     # Create configuration files
     log "⚙️  Setting up configuration files..."
     create_compose_file
@@ -1649,6 +1645,32 @@ echo
 info "Step 2/5: Configuration Collection"
 info "📝 Now we'll gather the information needed for your TofuPilot setup..."
 collect_config
+
+# Source the collected configuration to make variables available
+if [ -f "$CONFIG_FILE" ]; then
+    log "Loading configuration variables..."
+    source "$CONFIG_FILE"
+    info "Configuration variables loaded ✓"
+    
+    # Display collected configuration (without secrets)
+    echo
+    info "Configuration Summary:"
+    echo "  Domain: ${DOMAIN_NAME}"
+    echo "  Storage Domain: ${STORAGE_DOMAIN_NAME}"
+    if [ "$LOCAL_MODE" = "false" ]; then
+        echo "  SSL Email: ${ACME_EMAIL}"
+    fi
+    if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
+        echo "  Google OAuth: Configured"
+    fi
+    if [ -n "${AZURE_AD_CLIENT_ID:-}" ]; then
+        echo "  Azure AD: Configured"
+    fi
+    if [ -n "${SMTP_HOST:-}" ]; then
+        echo "  Email Auth: Configured (${SMTP_HOST})"
+    fi
+    echo
+fi
 
 echo
 info "Step 3/5: Service Deployment"
