@@ -821,7 +821,7 @@ https://tofupilot.com/docs"
     info "Downloading MinIO storage image..."
     echo "   This step downloads several GB of data - please be patient..."
     
-    if docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
+    if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
         log "Docker images downloaded ✓"
     else
         error "Failed to pull Docker images. If TofuPilot image access was denied, you may need proper credentials or access permissions."
@@ -837,7 +837,7 @@ https://tofupilot.com/docs"
     
     # Clean up any orphaned containers first
     info "Cleaning up any orphaned containers from previous runs..."
-    docker-compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
     
     # Remove any corrupted containers
     info "Removing any corrupted containers..."
@@ -861,7 +861,7 @@ https://tofupilot.com/docs"
             error "Failed to start services even after cleanup. 
 
 Try manual cleanup:
-1. docker-compose down --volumes --remove-orphans
+1. docker compose down --volumes --remove-orphans
 2. docker system prune -a -f
 3. ./deploy.sh --local
 
@@ -888,7 +888,7 @@ Check logs with: docker-compose logs"
     info "Checking if all containers are running..."
     info "Testing service connectivity..."
     
-    if docker-compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
+    if docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
         log "All services are running ✓"
         
         # Check for exec format errors in app container
