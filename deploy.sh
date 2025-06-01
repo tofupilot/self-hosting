@@ -326,7 +326,6 @@ services:
       - NEXTAUTH_URL=http://${DOMAIN_NAME}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
-      - EDGEDB_CLIENT_TLS_SECURITY=insecure
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=http://${STORAGE_DOMAIN_NAME}
@@ -356,7 +355,6 @@ services:
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - EDGEDB_SERVER_SECURITY=insecure_dev_mode
       - EDGEDB_SERVER_PASSWORD=${EDGEDB_PASSWORD}
     volumes:
       - database-data:/var/lib/edgedb/data
@@ -440,7 +438,6 @@ services:
       - NEXTAUTH_URL=https://${DOMAIN_NAME}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
-      - EDGEDB_CLIENT_TLS_SECURITY=insecure
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
@@ -471,7 +468,6 @@ services:
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - EDGEDB_SERVER_SECURITY=insecure_dev_mode
       - EDGEDB_SERVER_PASSWORD=${EDGEDB_PASSWORD}
     volumes:
       - database-data:/var/lib/edgedb/data
@@ -1077,7 +1073,7 @@ create_backup() {
     if docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
         log "Backing up EdgeDB database..."
         info "Creating database dump - this may take a few minutes..."
-        docker compose -f "$COMPOSE_FILE" exec -T database edgedb dump --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
+        docker compose -f "$COMPOSE_FILE" exec -T database edgedb dump --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
             warn "Database backup failed - database might not be running"
         }
 
@@ -1161,7 +1157,7 @@ restore_backup() {
     # Restore database
     if [ -f "$backup_dir/database.dump" ]; then
         log "Restoring database..."
-        docker compose -f "$COMPOSE_FILE" exec -T database edgedb restore --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
+        docker compose -f "$COMPOSE_FILE" exec -T database edgedb restore --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
             warn "Database restore failed - continuing with other services"
         }
     fi
@@ -1203,7 +1199,7 @@ run_migrations() {
     log "Waiting for database to be ready..."
     local retry_count=0
     while [ $retry_count -lt 30 ]; do
-        if docker compose -f "$COMPOSE_FILE" exec -T database edgedb query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
+        if docker compose -f "$COMPOSE_FILE" exec -T database edgedb query --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
             break
         fi
         sleep 2
