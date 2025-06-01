@@ -49,27 +49,30 @@ progress_bar() {
     printf "] %d%%" $percentage
 }
 
-# Prompt for input with optional default and secret mode
-prompt() {
+# Get existing value from env file
+get_env_value() {
+    local var_name="$1"
+    if [ -f "$ENV_FILE" ]; then
+        grep -E "^${var_name}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"'
+    fi
+}
+
+# Prompt with pre-filled values from env file
+prompt_env() {
     local var_name="$1"
     local message="$2"
-    local default="$3"
-    local secret="${4:-false}"
+    local secret="${3:-false}"
+    local existing_value
     local user_input=""
     
-    # If already set in config, use that
-    if [ -f "$CONFIG_FILE" ]; then
-        local existing_value
-        existing_value=$(grep -E "^${var_name}=" "$CONFIG_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"')
-        if [ -n "$existing_value" ]; then
-            echo "$existing_value"
-            return
-        fi
-    fi
+    # Get existing value from .env file
+    existing_value=$(get_env_value "$var_name")
     
-    # Display the prompt
-    if [ -n "$default" ]; then
-        echo -n "$message [$default]: "
+    # Display the prompt with existing value as default
+    if [ -n "$existing_value" ] && [ "$secret" = "false" ]; then
+        echo -n "$message [$existing_value]: "
+    elif [ -n "$existing_value" ] && [ "$secret" = "true" ]; then
+        echo -n "$message [***hidden***]: "
     else
         echo -n "$message: "
     fi
@@ -81,13 +84,9 @@ prompt() {
         read user_input
     fi
     
-    if [ -z "$user_input" ]; then
-        user_input="$default"
-    fi
-    
-    # Save to config file (only if var_name and value are not empty)
-    if [ -n "$var_name" ] && [ -n "$user_input" ]; then
-        echo "${var_name}=\"${user_input}\"" >> "$CONFIG_FILE"
+    # Use existing value if user pressed enter
+    if [ -z "$user_input" ] && [ -n "$existing_value" ]; then
+        user_input="$existing_value"
     fi
     
     echo "$user_input"
@@ -460,12 +459,11 @@ EOF
 
 # Create environment file
 create_env_file() {
-    log "Creating environment configuration..."
+    info "Creating environment file..."
     
     # Backup existing .env
     if [ -f "$ENV_FILE" ]; then
         cp "$ENV_FILE" "${ENV_FILE}.backup.$(date +%s)"
-        warn "Backed up existing .env file"
     fi
     
     cat > "$ENV_FILE" <<EOF
@@ -499,257 +497,98 @@ EOF
 
 # Collect user configuration
 collect_config() {
-    log "Collecting configuration..."
-    
-    # Remove old config to start fresh
-    if [ -f "$CONFIG_FILE" ]; then
-        rm -f "$CONFIG_FILE"
-    fi
-    
+    info "Collecting configuration"
     echo
+    
     if [ "$LOCAL_MODE" = "true" ]; then
-        info "=== Local Development Configuration ==="
-        warn "This is for local testing only - no SSL, no real domains"
+        step "Local Development Configuration"
+        warn "Local mode - no SSL, localhost only"
     else
-        info "=== TofuPilot Production Configuration ==="
+        step "Production Configuration"
     fi
     echo
     
-    info "Please provide the following configuration details..."
-    echo
-    
-    # Required settings
-    info "Domain Configuration:"
+    # Domain Configuration
+    echo "Domain Configuration:"
     if [ "$LOCAL_MODE" = "true" ]; then
-        # Local mode - simple defaults
-        echo -n "Enter local domain name [localhost]: "
-        read DOMAIN_NAME
-        if [ -z "$DOMAIN_NAME" ]; then
-            DOMAIN_NAME="localhost"
-        fi
+        DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Local domain name" false)
+        if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="localhost"; fi
         
-        echo -n "Enter storage domain name [localhost:9000]: "
-        read STORAGE_DOMAIN_NAME
-        if [ -z "$STORAGE_DOMAIN_NAME" ]; then
+        # Auto-generate storage domain based on main domain
+        local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
+        if [ -n "$existing_storage" ]; then
+            STORAGE_DOMAIN_NAME="$existing_storage"
+        else
             STORAGE_DOMAIN_NAME="localhost:9000"
         fi
         
         ACME_EMAIL="admin@localhost"
-        
-        # Save to config file
-        echo "DOMAIN_NAME=\"${DOMAIN_NAME}\"" >> "$CONFIG_FILE"
-        echo "STORAGE_DOMAIN_NAME=\"${STORAGE_DOMAIN_NAME}\"" >> "$CONFIG_FILE"
-        echo "ACME_EMAIL=\"${ACME_EMAIL}\"" >> "$CONFIG_FILE"
     else
-        # Production mode
-        echo -n "Enter your domain name [tofupilot.example.com]: "
-        read DOMAIN_NAME
-        if [ -z "$DOMAIN_NAME" ]; then
-            DOMAIN_NAME="tofupilot.example.com"
-        fi
+        DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
+        if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="tofupilot.example.com"; fi
         
-        echo -n "Enter storage domain name [storage.${DOMAIN_NAME}]: "
-        read STORAGE_DOMAIN_NAME
-        if [ -z "$STORAGE_DOMAIN_NAME" ]; then
+        # Auto-generate storage domain based on main domain
+        local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
+        if [ -n "$existing_storage" ]; then
+            STORAGE_DOMAIN_NAME="$existing_storage"
+        else
             STORAGE_DOMAIN_NAME="storage.${DOMAIN_NAME}"
         fi
         
-        echo -n "Enter email for SSL certificates [admin@${DOMAIN_NAME}]: "
-        read ACME_EMAIL
-        if [ -z "$ACME_EMAIL" ]; then
+        # Auto-generate SSL email based on main domain
+        local existing_email=$(get_env_value "ACME_EMAIL")
+        if [ -n "$existing_email" ]; then
+            ACME_EMAIL="$existing_email"
+        else
             ACME_EMAIL="admin@${DOMAIN_NAME}"
         fi
+    fi
+    
+    echo "  Domain: $DOMAIN_NAME"
+    echo "  Storage: $STORAGE_DOMAIN_NAME"
+    if [ "$LOCAL_MODE" = "false" ]; then
+        echo "  SSL Email: $ACME_EMAIL"
+    fi
+    
+    echo
+    echo "Security Configuration:"
+    NEXTAUTH_SECRET=$(prompt_env "NEXTAUTH_SECRET" "NextAuth secret" true)
+    if [ -z "$NEXTAUTH_SECRET" ]; then NEXTAUTH_SECRET=$(generate_password); fi
+    
+    EDGEDB_PASSWORD=$(prompt_env "EDGEDB_PASSWORD" "Database password" true)
+    if [ -z "$EDGEDB_PASSWORD" ]; then EDGEDB_PASSWORD=$(generate_password); fi
+    
+    MINIO_SECRET_KEY=$(prompt_env "MINIO_SECRET_KEY" "Storage secret key" true)
+    if [ -z "$MINIO_SECRET_KEY" ]; then MINIO_SECRET_KEY=$(generate_password); fi
+    
+    echo
+    echo "Authentication Configuration (optional):"
+    GOOGLE_CLIENT_ID=$(prompt_env "GOOGLE_CLIENT_ID" "Google OAuth Client ID" false)
+    if [ -n "$GOOGLE_CLIENT_ID" ]; then
+        GOOGLE_CLIENT_SECRET=$(prompt_env "GOOGLE_CLIENT_SECRET" "Google OAuth Client Secret" true)
+    fi
+    
+    AZURE_AD_CLIENT_ID=$(prompt_env "AZURE_AD_CLIENT_ID" "Azure AD Client ID" false)
+    if [ -n "$AZURE_AD_CLIENT_ID" ]; then
+        AZURE_AD_CLIENT_SECRET=$(prompt_env "AZURE_AD_CLIENT_SECRET" "Azure AD Client Secret" true)
+        AZURE_AD_TENANT_ID=$(prompt_env "AZURE_AD_TENANT_ID" "Azure AD Tenant ID" false)
+    fi
+    
+    echo
+    echo "Email Configuration (optional):"
+    SMTP_HOST=$(prompt_env "SMTP_HOST" "SMTP server hostname" false)
+    if [ -n "$SMTP_HOST" ]; then
+        SMTP_PORT=$(prompt_env "SMTP_PORT" "SMTP port" false)
+        if [ -z "$SMTP_PORT" ]; then SMTP_PORT="587"; fi
         
-        # Save to config file
-        echo "DOMAIN_NAME=\"${DOMAIN_NAME}\"" >> "$CONFIG_FILE"
-        echo "STORAGE_DOMAIN_NAME=\"${STORAGE_DOMAIN_NAME}\"" >> "$CONFIG_FILE"
-        echo "ACME_EMAIL=\"${ACME_EMAIL}\"" >> "$CONFIG_FILE"
-    fi
-    
-    # Generate secure passwords if not provided
-    if [ -z "$NEXTAUTH_SECRET" ]; then
-        NEXTAUTH_SECRET=$(generate_password)
-        echo "NEXTAUTH_SECRET=\"${NEXTAUTH_SECRET}\"" >> "$CONFIG_FILE"
-    fi
-    if [ -z "$EDGEDB_PASSWORD" ]; then
-        EDGEDB_PASSWORD=$(generate_password)
-        echo "EDGEDB_PASSWORD=\"${EDGEDB_PASSWORD}\"" >> "$CONFIG_FILE"
-    fi
-    if [ -z "$MINIO_SECRET_KEY" ]; then
-        MINIO_SECRET_KEY=$(generate_password)
-        echo "MINIO_SECRET_KEY=\"${MINIO_SECRET_KEY}\"" >> "$CONFIG_FILE"
+        SMTP_USER=$(prompt_env "SMTP_USER" "SMTP username" false)
+        SMTP_PASSWORD=$(prompt_env "SMTP_PASSWORD" "SMTP password" true)
+        EMAIL_FROM=$(prompt_env "EMAIL_FROM" "From email address" false)
+        if [ -z "$EMAIL_FROM" ]; then EMAIL_FROM="$ACME_EMAIL"; fi
     fi
     
     echo
-    if [ "$LOCAL_MODE" = "true" ]; then
-        info "=== Authentication Setup (Optional for Local Testing) ==="
-        warn "You can skip authentication setup for local testing"
-        echo
-        echo "Choose authentication method:"
-        echo "1) Skip authentication (local testing only)"
-        echo "2) Google OAuth"
-        echo "3) Azure AD" 
-        echo "4) Email authentication"
-        echo -n "Enter choice [1]: "
-        read auth_choice
-        if [ -z "$auth_choice" ]; then
-            auth_choice="1"
-        fi
-    else
-        info "=== Authentication Setup ==="
-        warn "At least one authentication method is required for TofuPilot to work."
-        echo
-        echo "Choose authentication method:"
-        echo "1) Google OAuth (Recommended)"
-        echo "2) Azure AD"
-        echo "3) Email authentication"
-        echo -n "Enter choice [1]: "
-        read auth_choice
-        if [ -z "$auth_choice" ]; then
-            auth_choice="1"
-        fi
-    fi
-    
-    # Configure based on choice
-    AUTH_CONFIGURED=false
-    
-    case "$auth_choice" in
-        1)
-            if [ "$LOCAL_MODE" = "true" ]; then
-                info "✓ Skipping authentication for local testing"
-                AUTH_CONFIGURED=true
-            else
-                info "Configuring Google OAuth..."
-                echo -n "Google OAuth Client ID: "
-                read GOOGLE_CLIENT_ID
-                if [ -n "$GOOGLE_CLIENT_ID" ]; then
-                    echo -n "Google OAuth Client Secret: "
-                    read -s GOOGLE_CLIENT_SECRET
-                    echo
-                    if [ -n "$GOOGLE_CLIENT_SECRET" ]; then
-                        AUTH_CONFIGURED=true
-                        info "✓ Google OAuth configured"
-                        echo "GOOGLE_CLIENT_ID=\"${GOOGLE_CLIENT_ID}\"" >> "$CONFIG_FILE"
-                        echo "GOOGLE_CLIENT_SECRET=\"${GOOGLE_CLIENT_SECRET}\"" >> "$CONFIG_FILE"
-                    fi
-                fi
-            fi
-            ;;
-        2)
-            info "Configuring Azure AD..."
-            echo -n "Azure AD Client ID: "
-            read AZURE_AD_CLIENT_ID
-            if [ -n "$AZURE_AD_CLIENT_ID" ]; then
-                echo -n "Azure AD Client Secret: "
-                read -s AZURE_AD_CLIENT_SECRET
-                echo
-                echo -n "Azure AD Tenant ID: "
-                read AZURE_AD_TENANT_ID
-                if [ -n "$AZURE_AD_CLIENT_SECRET" ] && [ -n "$AZURE_AD_TENANT_ID" ]; then
-                    AUTH_CONFIGURED=true
-                    info "✓ Azure AD configured"
-                    echo "AZURE_AD_CLIENT_ID=\"${AZURE_AD_CLIENT_ID}\"" >> "$CONFIG_FILE"
-                    echo "AZURE_AD_CLIENT_SECRET=\"${AZURE_AD_CLIENT_SECRET}\"" >> "$CONFIG_FILE"
-                    echo "AZURE_AD_TENANT_ID=\"${AZURE_AD_TENANT_ID}\"" >> "$CONFIG_FILE"
-                fi
-            fi
-            ;;
-        3)
-            info "Configuring Email authentication..."
-            echo -n "SMTP server hostname: "
-            read SMTP_HOST
-            if [ -n "$SMTP_HOST" ]; then
-                echo -n "SMTP port [587]: "
-                read SMTP_PORT
-                if [ -z "$SMTP_PORT" ]; then
-                    SMTP_PORT="587"
-                fi
-                
-                echo -n "SMTP username: "
-                read SMTP_USER
-                
-                echo -n "SMTP password: "
-                read -s SMTP_PASSWORD
-                echo
-                
-                echo -n "From email address [${ACME_EMAIL}]: "
-                read EMAIL_FROM
-                if [ -z "$EMAIL_FROM" ]; then
-                    EMAIL_FROM="$ACME_EMAIL"
-                fi
-                
-                if [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ] && [ -n "$EMAIL_FROM" ]; then
-                    AUTH_CONFIGURED=true
-                    info "✓ Email authentication configured"
-                    echo "SMTP_HOST=\"${SMTP_HOST}\"" >> "$CONFIG_FILE"
-                    echo "SMTP_PORT=\"${SMTP_PORT}\"" >> "$CONFIG_FILE"
-                    echo "SMTP_USER=\"${SMTP_USER}\"" >> "$CONFIG_FILE"
-                    echo "SMTP_PASSWORD=\"${SMTP_PASSWORD}\"" >> "$CONFIG_FILE"
-                    echo "EMAIL_FROM=\"${EMAIL_FROM}\"" >> "$CONFIG_FILE"
-                fi
-            fi
-            ;;
-        4)
-            if [ "$LOCAL_MODE" = "true" ]; then
-                info "Configuring Email authentication..."
-                echo -n "SMTP server hostname: "
-                read SMTP_HOST
-                if [ -n "$SMTP_HOST" ]; then
-                    echo -n "SMTP port [587]: "
-                    read SMTP_PORT
-                    if [ -z "$SMTP_PORT" ]; then
-                        SMTP_PORT="587"
-                    fi
-                    
-                    echo -n "SMTP username: "
-                    read SMTP_USER
-                    
-                    echo -n "SMTP password: "
-                    read -s SMTP_PASSWORD
-                    echo
-                    
-                    echo -n "From email address [${ACME_EMAIL}]: "
-                    read EMAIL_FROM
-                    if [ -z "$EMAIL_FROM" ]; then
-                        EMAIL_FROM="$ACME_EMAIL"
-                    fi
-                    
-                    if [ -n "$SMTP_USER" ] && [ -n "$SMTP_PASSWORD" ] && [ -n "$EMAIL_FROM" ]; then
-                        AUTH_CONFIGURED=true
-                        info "✓ Email authentication configured"
-                        echo "SMTP_HOST=\"${SMTP_HOST}\"" >> "$CONFIG_FILE"
-                        echo "SMTP_PORT=\"${SMTP_PORT}\"" >> "$CONFIG_FILE"
-                        echo "SMTP_USER=\"${SMTP_USER}\"" >> "$CONFIG_FILE"
-                        echo "SMTP_PASSWORD=\"${SMTP_PASSWORD}\"" >> "$CONFIG_FILE"
-                        echo "EMAIL_FROM=\"${EMAIL_FROM}\"" >> "$CONFIG_FILE"
-                    fi
-                fi
-            else
-                warn "Invalid choice. Please run the script again and choose 1, 2, or 3."
-                exit 1
-            fi
-            ;;
-        *)
-            warn "Invalid choice. Please run the script again and choose a valid option."
-            exit 1
-            ;;
-    esac
-    
-    echo
-    
-    # Validate that at least one auth method is configured (skip for local mode)
-    if [ "$LOCAL_MODE" = "false" ] && [ "$AUTH_CONFIGURED" = "false" ]; then
-        error "At least one authentication method must be configured. Please run the script again and configure Google OAuth, Azure AD, or Email authentication."
-    fi
-    
-    if [ "$LOCAL_MODE" = "true" ]; then
-        info "Local development mode - authentication validation skipped"
-    elif [ "$AUTH_CONFIGURED" = "true" ]; then
-        info "Authentication setup complete"
-    fi
-    
-    echo
-    log "Configuration collected"
+    log "Configuration complete"
 }
 
 # Deploy the application
