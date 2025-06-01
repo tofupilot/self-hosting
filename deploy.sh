@@ -92,6 +92,36 @@ prompt_env() {
     echo "$user_input"
 }
 
+# Prompt with custom default value
+prompt_env_with_default() {
+    local var_name="$1"
+    local message="$2"
+    local default_value="$3"
+    local secret="${4:-false}"
+    local user_input=""
+    
+    # Display the prompt with default value
+    if [ "$secret" = "false" ]; then
+        echo -n "$message [$default_value]: "
+    else
+        echo -n "$message [***hidden***]: "
+    fi
+    
+    if [ "$secret" = "true" ]; then
+        read -s user_input
+        echo
+    else
+        read user_input
+    fi
+    
+    # Use default value if user pressed enter
+    if [ -z "$user_input" ]; then
+        user_input="$default_value"
+    fi
+    
+    echo "$user_input"
+}
+
 # GitHub authentication and testing
 github_auth() {
     info "GitHub authentication required"
@@ -378,6 +408,7 @@ services:
       - NEXTAUTH_URL=https://${DOMAIN_NAME}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
+      - EDGEDB_CLIENT_TLS_SECURITY=insecure
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
@@ -514,40 +545,34 @@ collect_config() {
         DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Local domain name" false)
         if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="localhost"; fi
         
-        # Auto-generate storage domain based on main domain
+        # Storage domain with smart default
+        local storage_default="localhost:9000"
         local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
         if [ -n "$existing_storage" ]; then
-            STORAGE_DOMAIN_NAME="$existing_storage"
-        else
-            STORAGE_DOMAIN_NAME="localhost:9000"
+            storage_default="$existing_storage"
         fi
+        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain name" "$storage_default" false)
         
         ACME_EMAIL="admin@localhost"
     else
         DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
         if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="tofupilot.example.com"; fi
         
-        # Auto-generate storage domain based on main domain
+        # Storage domain with smart default based on main domain
+        local storage_default="storage.${DOMAIN_NAME}"
         local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
         if [ -n "$existing_storage" ]; then
-            STORAGE_DOMAIN_NAME="$existing_storage"
-        else
-            STORAGE_DOMAIN_NAME="storage.${DOMAIN_NAME}"
+            storage_default="$existing_storage"
         fi
+        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain name" "$storage_default" false)
         
-        # Auto-generate SSL email based on main domain
+        # SSL email with smart default based on main domain
+        local email_default="admin@${DOMAIN_NAME}"
         local existing_email=$(get_env_value "ACME_EMAIL")
         if [ -n "$existing_email" ]; then
-            ACME_EMAIL="$existing_email"
-        else
-            ACME_EMAIL="admin@${DOMAIN_NAME}"
+            email_default="$existing_email"
         fi
-    fi
-    
-    echo "  Domain: $DOMAIN_NAME"
-    echo "  Storage: $STORAGE_DOMAIN_NAME"
-    if [ "$LOCAL_MODE" = "false" ]; then
-        echo "  SSL Email: $ACME_EMAIL"
+        ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "Email for SSL certificates" "$email_default" false)
     fi
     
     echo
