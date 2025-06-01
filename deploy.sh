@@ -20,19 +20,34 @@ CONFIG_FILE="$SCRIPT_DIR/.tofupilot.conf"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
-# Colours for output
-RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; BLUE='\033[0;34m'; NC='\033[0m'
+# Colors for output
+RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
 
 #----------------------------#
 #         Functions          #
 #----------------------------#
-log(){ echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"; }
-warn(){ echo -e "${YELLOW}[WARNING] $1${NC}"; }
-error(){ echo -e "${RED}[ERROR] $1${NC}"; exit 1; }
-info(){ echo -e "${BLUE}[INFO] $1${NC}"; }
+log(){ echo -e "${GREEN}✓ $1${NC}"; }
+warn(){ echo -e "${YELLOW}! $1${NC}"; }
+error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
+info(){ echo -e "${CYAN}→ $1${NC}"; }
+step(){ echo -e "${BLUE}$1${NC}"; }
 
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
+
+# Simple progress bar
+progress_bar() {
+    local current=$1
+    local total=$2
+    local width=30
+    local percentage=$((current * 100 / total))
+    local completed=$((current * width / total))
+    
+    printf "\r["
+    for ((i=0; i<completed; i++)); do printf "█"; done
+    for ((i=completed; i<width; i++)); do printf "░"; done
+    printf "] %d%%" $percentage
+}
 
 # Prompt for input with optional default and secret mode
 prompt() {
@@ -80,203 +95,127 @@ prompt() {
 
 # GitHub authentication and testing
 github_auth() {
-    log "GitHub authentication required for TofuPilot image access..."
-    echo
-    echo "The TofuPilot image is private and requires GitHub authentication."
-    echo "You need a GitHub Personal Access Token with 'read:packages' permission."
-    echo "Create one at: https://github.com/settings/tokens"
+    info "GitHub authentication required"
+    echo "Need GitHub Personal Access Token with 'read:packages' permission"
+    echo "Create at: https://github.com/settings/tokens"
     echo
     
-    # Get credentials
     echo -n "GitHub Username: "
     read github_username
-    
     echo -n "GitHub Personal Access Token: "
     read -s github_token
     echo
     
     if [ -z "$github_username" ] || [ -z "$github_token" ]; then
-        error "Username and token are required"
+        error "Username and token required"
     fi
     
     echo
-    log "Starting GitHub authentication tests..."
+    info "Testing authentication..."
     
-    # Test 1: GitHub API access
-    echo
-    info "Test 1: Testing GitHub API access with PAT..."
+    # Test GitHub API
     if curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep -q "login"; then
-        log "✓ GitHub API access successful"
         github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
-        info "Authenticated as: $github_user"
+        log "GitHub API access ($github_user)"
     else
-        error "✗ GitHub API access failed - check your PAT
-        
-Make sure your PAT has the following permissions:
-  - read:packages (required)
-  - repo (if accessing private repos)"
+        error "GitHub API failed - check PAT permissions"
     fi
     
-    # Test 2: Package registry access
-    echo
-    info "Test 2: Testing GitHub Packages API access..."
+    # Test package access
     if curl -s -H "Authorization: token $github_token" "https://api.github.com/user/packages?package_type=container" >/dev/null; then
-        log "✓ GitHub Packages API access successful"
+        log "Package registry access"
     else
-        warn "⚠ GitHub Packages API access limited (this may be normal)"
+        warn "Package access limited"
     fi
     
-    # Test 3: Docker logout and clean slate
-    echo
-    info "Test 3: Cleaning Docker authentication state..."
+    # Clean Docker auth
     docker logout >/dev/null 2>&1 || true
-    log "✓ Docker logout completed"
     
-    # Test 4: Docker login to ghcr.io
-    echo
-    info "Test 4: Testing Docker login to GitHub Container Registry..."
+    # Test Docker login
     if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin >/dev/null 2>&1; then
-        log "✓ Docker login to ghcr.io successful"
+        log "Docker registry login"
     else
-        error "✗ Docker login to ghcr.io failed
-
-Possible issues:
-  1. PAT doesn't have 'read:packages' permission
-  2. PAT is expired or invalid
-  3. Username is incorrect"
+        error "Docker login failed"
     fi
     
-    # Test 5: Test pull specific TofuPilot image
-    echo
-    info "Test 5: Testing access to TofuPilot image..."
+    # Test image pull
     if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
-        log "✓ TofuPilot image pull successful"
-        
-        # Get image info
-        image_id=$(docker images ghcr.io/tofupilot/tofupilot:latest --format "{{.ID}}")
-        image_size=$(docker images ghcr.io/tofupilot/tofupilot:latest --format "{{.Size}}")
-        info "Image ID: $image_id"
-        info "Image Size: $image_size"
+        log "TofuPilot image access"
     else
-        error "✗ TofuPilot image pull failed
-
-This could mean:
-  1. You don't have access to the tofupilot/tofupilot repository
-  2. The repository doesn't exist or is private
-  3. PAT permissions are insufficient"
+        error "Image pull failed - check repository access"
     fi
     
-    echo
-    log "=== GITHUB AUTHENTICATION COMPLETE ==="
-    info "All authentication tests passed successfully"
-    info "GitHub authentication verified ✓"
+    log "Authentication complete"
 }
 
 # Check system requirements
 check_requirements() {
-    log "Checking system requirements..."
-    info "Validating your system can run TofuPilot..."
+    info "Checking system requirements"
     
-    # Check if running as root
+    # Root check
     if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "false" ]; then
-        error "Please don't run this script as root. It will ask for sudo when needed.
-
-Use --allow-root flag to bypass this check if you're in a controlled environment:
-  bash <(curl -s URL) --allow-root"
+        error "Don't run as root. Use --allow-root if needed"
     fi
     
     if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "true" ]; then
-        warn "Running as root user - this may cause file ownership issues"
-        warn "Consider creating a non-root user for better security"
+        warn "Running as root - may cause file ownership issues"
     fi
     
-    # Check OS
-    info "Checking operating system compatibility..."
+    # OS check
     if ! command_exists apt; then
-        error "This script requires Ubuntu/Debian with apt package manager"
+        error "Requires Ubuntu/Debian with apt"
     fi
-    log "Operating system check passed ✓"
+    log "Operating system"
     
-    # Check Docker
-    info "Checking Docker installation..."
+    # Docker check
     if ! command_exists docker; then
-        log "Installing Docker..."
-        info "Docker not found - installing automatically..."
-        info "This may take a few minutes..."
-        curl -fsSL https://get.docker.com | sh
+        info "Installing Docker..."
+        curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
         sudo usermod -aG docker "$USER"
-        info "Docker installed. You may need to logout and login again for Docker permissions."
+        log "Docker installed"
     else
-        log "Docker found ✓"
+        log "Docker found"
     fi
     
-    # Check if user is in docker group and has permissions
-    info "Checking Docker permissions..."
+    # Docker permissions
     if ! docker ps >/dev/null 2>&1; then
-        warn "Docker permission issue detected!"
-        info "Adding user to docker group and fixing permissions..."
-        
-        # Add user to docker group if not already
+        info "Fixing Docker permissions..."
         if ! groups "$USER" | grep -q docker; then
             sudo usermod -aG docker "$USER"
-            info "Added $USER to docker group"
         fi
+        sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
         
-        # Try to fix immediate permissions for this session
-        info "Attempting to fix permissions for current session..."
-        if sudo chmod 666 /var/run/docker.sock 2>/dev/null; then
-            info "Temporary permission fix applied"
-        else
-            warn "Could not apply temporary fix. You may need to logout and login again."
-        fi
-        
-        # Test again
         if ! docker ps >/dev/null 2>&1; then
-            error "Docker permissions still not working. Please run: 
-1. logout and login again, OR
-2. run: newgrp docker, OR  
-3. run this script with: sudo -E ./deploy.sh --local"
+            error "Docker permissions failed - logout/login required"
         fi
     fi
-    log "Docker permissions verified ✓"
+    log "Docker permissions"
     
-    # Check Docker Compose
-    info "Checking Docker Compose installation..."
+    # Docker Compose
     if ! command_exists docker-compose && ! docker compose version >/dev/null 2>&1; then
-        log "Installing Docker Compose..."
-        info "Docker Compose not found - installing..."
-        sudo apt update
-        sudo apt install -y docker-compose-plugin
-        log "Docker Compose installed ✓"
+        info "Installing Docker Compose..."
+        sudo apt update >/dev/null 2>&1
+        sudo apt install -y docker-compose-plugin >/dev/null 2>&1
+        log "Docker Compose installed"
     else
-        log "Docker Compose found ✓"
+        log "Docker Compose found"
     fi
     
-    # Check if ports are available
-    info "Checking port availability (80, 443)..."
+    # Port check
     if command_exists netstat && sudo netstat -tlnp 2>/dev/null | grep -E ':80|:443' >/dev/null 2>&1; then
-        warn "Ports 80 or 443 appear to be in use. This might cause issues."
+        warn "Ports 80/443 in use"
     elif command_exists ss && sudo ss -tlnp 2>/dev/null | grep -E ':80|:443' >/dev/null 2>&1; then
-        warn "Ports 80 or 443 appear to be in use. This might cause issues."
+        warn "Ports 80/443 in use"
     else
-        log "Ports 80/443 available ✓"
+        log "Ports available"
     fi
     
-    # Check system architecture
-    info "Checking system architecture..."
+    # Architecture
     ARCH=$(uname -m)
     if [ "$ARCH" = "arm64" ] || [ "$ARCH" = "aarch64" ]; then
-        warn "Detected ARM64 architecture (Apple Silicon or ARM server)"
-        warn "TofuPilot currently only supports AMD64 - we'll use emulation"
-        info "This may be slower but should work. If you get 'exec format error', Docker emulation might not be enabled."
-        echo
-        echo "If the deployment fails with 'exec format error':"
-        echo "1. Enable Docker Desktop's 'Use Rosetta for x86/amd64 emulation' (Mac)"
-        echo "2. Or try: docker run --rm --privileged tonistiigi/binfmt --install all"
-        echo "3. Or contact TofuPilot for ARM64 support"
-        echo
+        warn "ARM64 detected - using emulation (may be slower)"
     else
-        log "Architecture check passed (AMD64) ✓"
+        log "Architecture (AMD64)"
     fi
 }
 
@@ -819,87 +758,39 @@ deploy() {
     
     # Configuration variables are already loaded in main script
     # Create configuration files
-    log "⚙️  Setting up configuration files..."
+    info "Creating configuration files..."
     create_compose_file
     create_env_file
     
-    # Pull latest images
-    log "📥 Pulling Docker images (this may take a few minutes)..."
-    info "TofuPilot uses GitHub Container Registry - authentication already verified..."
-    info "Downloading TofuPilot application image from GitHub Container Registry..."
-    info "Note: Using AMD64 platform (TofuPilot doesn't support ARM64 yet)"
-    info "Downloading Traefik reverse proxy image..."
-    info "Downloading EdgeDB database image..."
-    info "Downloading MinIO storage image..."
-    echo "   This step downloads several GB of data - please be patient..."
+    info "Pulling Docker images..."
     
     if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
-        log "Docker images downloaded ✓"
-        
-        # Display pulled image versions
-        echo
-        info "Downloaded image versions:"
-        echo "  TofuPilot: $(docker inspect ghcr.io/tofupilot/tofupilot:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
-        echo "  Traefik: $(docker inspect traefik:v3.0 --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo 'v3.0')"
-        echo "  EdgeDB: $(docker inspect edgedb/edgedb:latest --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || docker inspect edgedb/edgedb:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
-        echo "  MinIO: $(docker inspect minio/minio:latest --format='{{index .Config.Labels "version"}}' 2>/dev/null || docker inspect minio/minio:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
-        echo
+        log "Images downloaded"
     else
-        error "Failed to pull Docker images. If TofuPilot image access was denied, you may need proper credentials or access permissions."
+        error "Failed to pull images"
     fi
     
-    # Start services
-    log "🚀 Starting TofuPilot services..."
-    info "Starting reverse proxy (Traefik)..."
-    info "Starting database (EdgeDB)..."
-    info "Starting object storage (MinIO)..."
-    info "Starting main application (TofuPilot)..."
-    echo "   Services are starting in the background..."
-    
-    # Clean up any orphaned containers first
-    info "Cleaning up any orphaned containers from previous runs..."
+    info "Starting services..."
     docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
-    
-    # Remove any corrupted containers
-    info "Removing any corrupted containers..."
     docker container prune -f 2>/dev/null || true
     
     if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
-        log "Services started ✓"
+        log "Services started"
     else
-        warn "Service startup failed. Attempting cleanup and retry..."
-        
-        # More aggressive cleanup
-        info "Performing thorough cleanup..."
+        info "Retrying with cleanup..."
         docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
         docker system prune -f 2>/dev/null || true
         
-        # Try again
-        info "Retrying service startup..."
         if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
-            log "Services started after cleanup ✓"
+            log "Services started"
         else
-            error "Failed to start services even after cleanup. 
-
-Try manual cleanup:
-1. docker compose down --volumes --remove-orphans
-2. docker system prune -a -f
-3. ./deploy.sh --local
-
-Check logs with: docker compose logs"
+            error "Service startup failed"
         fi
     fi
     
-    # Wait for services to be ready
-    log "⏳ Waiting for services to initialize..."
-    info "Services need time to start up and become ready..."
-    info "Database initialization in progress..."
-    info "Application startup in progress..."
-    
-    local dots=""
+    info "Initializing services..."
     for i in {1..15}; do
-        dots="${dots}."
-        echo -ne "\r   Initializing services${dots} ($i/15 seconds)"
+        progress_bar $i 15
         sleep 1
     done
     echo
@@ -1638,107 +1529,56 @@ esac
 
 # Main installation flow
 echo
-echo "=================================================================="
+echo "=========================================="
 if [ "$LOCAL_MODE" = "true" ]; then
-    log "🧪 Starting TofuPilot LOCAL development deployment..."
-    warn "This is for testing only - no SSL, uses localhost"
-    info "Perfect for development and testing purposes"
-    echo
-    info "⏳ Proceeding with local setup in 3 seconds..."
-    sleep 1
-    echo -n "   Starting"
-    for i in {1..3}; do
-        echo -n "."
-        sleep 1
-    done
-    echo " ✓"
+    step "TofuPilot Local Development Setup"
+    warn "Local mode - no SSL, localhost only"
 else
-    log "🚀 Starting TofuPilot PRODUCTION deployment..."
-    info "This will set up a full production-ready TofuPilot instance"
-    info "Complete with SSL certificates and domain configuration"
-    echo
-    info "⏳ Proceeding with production setup in 3 seconds..."
-    sleep 1
-    echo -n "   Starting"
-    for i in {1..3}; do
-        echo -n "."
-        sleep 1
-    done
-    echo " ✓"
+    step "TofuPilot Production Deployment"
+    info "Full setup with SSL certificates"
 fi
-echo "=================================================================="
+echo "=========================================="
 echo
 
-info "Step 1/6: System Requirements Check"
-info "🔍 Checking if your system is ready for TofuPilot..."
+step "1/6 System Requirements"
 check_requirements
 
 echo
-info "Step 2/6: GitHub Authentication"
-info "🔐 Setting up GitHub access for TofuPilot image download..."
-info "This must be done first to verify access to private TofuPilot images..."
+step "2/6 GitHub Authentication"
 github_auth
 
 echo
-info "Step 3/6: Configuration Collection"
-info "📝 Now we'll gather the information needed for your TofuPilot setup..."
+step "3/6 Configuration"
 collect_config
 
-# Source the collected configuration to make variables available
+# Load configuration
 if [ -f "$CONFIG_FILE" ]; then
-    log "Loading configuration variables..."
     source "$CONFIG_FILE"
-    info "Configuration variables loaded ✓"
-    
-    # Display collected configuration (without secrets)
-    echo
-    info "Configuration Summary:"
-    echo "  Domain: ${DOMAIN_NAME}"
-    echo "  Storage Domain: ${STORAGE_DOMAIN_NAME}"
-    if [ "$LOCAL_MODE" = "false" ]; then
-        echo "  SSL Email: ${ACME_EMAIL}"
-    fi
-    if [ -n "${GOOGLE_CLIENT_ID:-}" ]; then
-        echo "  Google OAuth: Configured"
-    fi
-    if [ -n "${AZURE_AD_CLIENT_ID:-}" ]; then
-        echo "  Azure AD: Configured"
-    fi
-    if [ -n "${SMTP_HOST:-}" ]; then
-        echo "  Email Auth: Configured (${SMTP_HOST})"
-    fi
-    echo
+    log "Configuration loaded"
 fi
 
 echo
-info "Step 4/6: Service Deployment"
-info "🚀 Time to deploy TofuPilot! This is where the magic happens..."
+step "4/6 Deployment"
 deploy
 
 echo
-info "Step 5/6: Final Verification"
-info "🔍 Almost done! Just verifying everything is working properly..."
-sleep 3  # Brief pause for services to stabilize
+step "5/6 Verification"
+sleep 2
 
 echo
-info "Step 6/6: Deployment Summary"
-info "📋 Generating your deployment summary and next steps..."
+step "6/6 Complete"
 show_info
 
 echo
-log "🎉 Deployment script completed successfully!"
-info "TofuPilot is now ready to use!"
+log "Deployment complete"
 
 if [ "$LOCAL_MODE" = "false" ]; then
     echo
-    warn "Important Next Steps:"
-    echo "1. Verify your domain DNS is pointing to this server"
-    echo "2. Configure your authentication providers (see output above)"
-    echo "3. Visit https://${DOMAIN_NAME} to start using TofuPilot"
-    echo "4. Monitor logs with: ./deploy.sh --logs"
+    echo "Next steps:"
+    echo "1. Point DNS to this server"
+    echo "2. Configure auth providers"
+    echo "3. Visit https://${DOMAIN_NAME}"
 else
     echo
-    info "Local Development Setup Complete!"
-    echo "Access your TofuPilot instance at: http://localhost"
-    echo "Monitor with: ./deploy.sh --logs"
+    echo "Access: http://localhost"
 fi
