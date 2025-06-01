@@ -291,7 +291,7 @@ services:
       - web
 
   database:
-    image: edgedb/edgedb:latest
+    image: geldata/gel:latest
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
@@ -405,7 +405,7 @@ services:
       - web
 
   database:
-    image: edgedb/edgedb:latest
+    image: geldata/gel:latest
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
@@ -455,7 +455,7 @@ EOF
     docker run --rm -v traefik-acme:/acme alpine sh -c "touch /acme/acme.json && chmod 600 /acme/acme.json" 2>/dev/null || true
   fi
 
-  log "Docker Compose file created ✓"
+  log "Docker Compose file created"
 }
 
 # Create environment file
@@ -494,7 +494,7 @@ SMTP_USER=${SMTP_USER:-}
 SMTP_PASSWORD=${SMTP_PASSWORD:-}
 EMAIL_FROM=${EMAIL_FROM:-}
 EOF
-    log "Environment file created ✓"
+    log "Environment file created"
 }
 
 # Collect user configuration
@@ -745,11 +745,11 @@ collect_config() {
     if [ "$LOCAL_MODE" = "true" ]; then
         info "Local development mode - authentication validation skipped"
     elif [ "$AUTH_CONFIGURED" = "true" ]; then
-        info "Authentication setup complete ✓"
+        info "Authentication setup complete"
     fi
     
     echo
-    log "Configuration collected ✓"
+    log "Configuration collected"
 }
 
 # Deploy the application
@@ -788,20 +788,49 @@ deploy() {
         fi
     fi
     
-    info "Initializing services..."
-    for i in {1..15}; do
-        progress_bar $i 15
-        sleep 1
+    info "Waiting for services to be ready..."
+    
+    # Wait for database
+    local db_ready=false
+    for i in {1..30}; do
+        if docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
+            db_ready=true
+            break
+        fi
+        progress_bar $i 30
+        sleep 2
     done
     echo
     
+    if [ "$db_ready" = "true" ]; then
+        log "Database ready"
+    else
+        warn "Database taking longer than expected"
+    fi
+    
+    # Wait for app
+    local app_ready=false
+    for i in {1..20}; do
+        if docker compose -f "$COMPOSE_FILE" ps app | grep -q "Up"; then
+            app_ready=true
+            break
+        fi
+        progress_bar $i 20
+        sleep 3
+    done
+    echo
+    
+    if [ "$app_ready" = "true" ]; then
+        log "Application ready"
+    else
+        warn "Application taking longer than expected"
+    fi
+    
     # Check if services are running
-    log "🔍 Verifying service status..."
-    info "Checking if all containers are running..."
-    info "Testing service connectivity..."
+    info "Verifying service status..."
     
     if docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
-        log "All services are running ✓"
+        log "All services running"
         
         # Check for exec format errors in app container
         if docker compose -f "$COMPOSE_FILE" logs app 2>/dev/null | grep -q "exec format error"; then
@@ -824,70 +853,63 @@ Then restart the deployment:
         fi
         
         if [ "$LOCAL_MODE" = "false" ]; then
-            # Additional wait for SSL certificates
-            log "🔒 Waiting for SSL certificates to be generated..."
-            log "   This may take 1-2 minutes for first-time setup..."
-            info "Let's Encrypt is validating your domain and issuing certificates..."
-            warn "Please ensure your DNS is properly configured and pointing to this server"
+            info "Checking SSL certificate generation..."
             
-            local ssl_dots=""
-            for i in {1..60}; do
-                ssl_dots="${ssl_dots}."
-                if [ $((i % 10)) -eq 0 ]; then
-                    echo -ne "\r   Generating SSL certificates${ssl_dots} (${i}/60 seconds)"
-                else
-                    echo -ne "\r   Generating SSL certificates${ssl_dots}"
-                fi
-                sleep 1
-            done
-            echo
-            
-            # Test if the app is accessible
-            log "🌐 Verifying deployment accessibility..."
-            info "Testing HTTPS connectivity to your domain..."
-            
+            local ssl_ready=false
             local retry_count=0
-            while [ $retry_count -lt 12 ]; do  # 2 minutes max
-                echo -ne "\r   Testing connectivity... attempt $((retry_count + 1))/12"
+            
+            while [ $retry_count -lt 24 ]; do  # 4 minutes max
+                progress_bar $retry_count 24
                 
+                # Check if HTTPS is working
                 if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                    echo
-                    log "TofuPilot is accessible at https://${DOMAIN_NAME} ✅"
+                    ssl_ready=true
                     break
                 fi
+                
+                # Check if at least HTTP is working
                 if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                    echo
-                    log "TofuPilot is accessible (SSL still provisioning) ⏳"
-                    break  
+                    # HTTP works, SSL might still be provisioning
+                    if [ $retry_count -gt 12 ]; then
+                        break  # Give up on SSL after 2+ minutes, HTTP is working
+                    fi
                 fi
                 
                 sleep 10
                 retry_count=$((retry_count + 1))
             done
+            echo
             
-            if [ $retry_count -eq 12 ]; then
-                echo
-                warn "Could not verify TofuPilot accessibility via HTTPS."
-                warn "This is normal if DNS is still propagating or SSL is still provisioning."
-                warn "Check your deployment with: ./deploy.sh --status"
-                info "Manual verification: try visiting https://${DOMAIN_NAME} in your browser"
+            if [ "$ssl_ready" = "true" ]; then
+                log "HTTPS accessible at https://${DOMAIN_NAME}"
+            elif curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
+                log "HTTP accessible (SSL may still be provisioning)"
+            else
+                warn "Service not yet accessible - DNS may still be propagating"
             fi
         else
-            # Local mode - test local connectivity
-            log "🌐 Testing local connectivity..."
-            info "Checking if services are responding on localhost..."
-            sleep 5  # Give services time to start
+            info "Testing local connectivity..."
             
-            if curl -f -s -I "http://localhost" >/dev/null 2>&1; then
-                log "TofuPilot is accessible at http://localhost ✅"
-            elif curl -f -s -I "http://localhost:3000" >/dev/null 2>&1; then
-                log "TofuPilot is accessible at http://localhost:3000 ✅"
-                info "Note: Access via http://localhost (port 80) or http://localhost:3000"
+            local local_ready=false
+            for i in {1..10}; do
+                progress_bar $i 10
+                
+                if curl -f -s -I "http://localhost" >/dev/null 2>&1; then
+                    local_ready=true
+                    break
+                elif curl -f -s -I "http://localhost:3000" >/dev/null 2>&1; then
+                    local_ready=true
+                    break
+                fi
+                
+                sleep 3
+            done
+            echo
+            
+            if [ "$local_ready" = "true" ]; then
+                log "Local access ready at http://localhost"
             else
-                warn "Local TofuPilot not yet accessible. Services may still be starting up."
-                info "Try: curl http://localhost (or wait 30 seconds and try again)"
-                info "Direct app access: http://localhost:3000"
-                info "Storage access: http://localhost:9000"
+                warn "Local service not yet ready - may need more time"
             fi
         fi
     else
@@ -1019,7 +1041,7 @@ Restore Command:
 ./deploy.sh --restore $backup_name
 EOF
     
-    log "Backup created: $backup_dir ✓"
+    log "Backup created: $backup_dir"
     echo "  Backup location: $backup_dir"
     echo "  Backup size: $(du -sh "$backup_dir" | cut -f1)"
 }
@@ -1097,7 +1119,7 @@ restore_backup() {
     log "Starting all services..."
     docker compose -f "$COMPOSE_FILE" up -d
     
-    log "Restore complete ✓"
+    log "Restore complete"
 }
 
 # Run database migrations
@@ -1134,7 +1156,7 @@ run_migrations() {
         warn "Migration command failed - this might be normal if no migrations are needed"
     }
     
-    log "Database migrations complete ✓"
+    log "Database migrations complete"
 }
 
 # Update existing deployment
@@ -1189,7 +1211,7 @@ update() {
     info "Checking that all services started successfully..."
     sleep 10
     if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
-        log "Update complete ✓"
+        log "Update complete"
         echo "  Backup created: backups/$backup_name"
         echo "  Services are running normally"
         info "TofuPilot has been successfully updated!"
@@ -1259,7 +1281,7 @@ cleanup_backups() {
         fi
     done
     
-    log "Cleanup complete - removed $removed_count old backups ✓"
+    log "Cleanup complete - removed $removed_count old backups"
 }
 
 # Show service status
@@ -1291,21 +1313,21 @@ show_status() {
     # Check if main app is responding
     info "Testing main application connectivity..."
     if curl -f -s -I "https://${DOMAIN_NAME:-localhost}" >/dev/null 2>&1; then
-        echo "✅ Main application: healthy (https://${DOMAIN_NAME:-localhost})"
+        echo "✓ Main application: healthy (https://${DOMAIN_NAME:-localhost})"
     elif curl -f -s -I "http://${DOMAIN_NAME:-localhost}" >/dev/null 2>&1; then
-        echo "⏳ Main application: accessible (SSL provisioning)"
+        echo "~ Main application: accessible (SSL provisioning)"
     else
-        echo "❌ Main application: not responding"
+        echo "✗ Main application: not responding"
     fi
     
     # Check storage
     info "Testing storage connectivity..."
     if curl -f -s -I "https://${STORAGE_DOMAIN_NAME:-storage.localhost}" >/dev/null 2>&1; then
-        echo "✅ Storage: healthy (https://${STORAGE_DOMAIN_NAME:-storage.localhost})"
+        echo "✓ Storage: healthy (https://${STORAGE_DOMAIN_NAME:-storage.localhost})"
     elif curl -f -s -I "http://${STORAGE_DOMAIN_NAME:-storage.localhost}" >/dev/null 2>&1; then
-        echo "⏳ Storage: accessible (SSL provisioning)"  
+        echo "~ Storage: accessible (SSL provisioning)"  
     else
-        echo "❌ Storage: not responding"
+        echo "✗ Storage: not responding"
     fi
     
     echo
@@ -1347,7 +1369,7 @@ restart_services() {
         docker compose -f "$COMPOSE_FILE" restart
     fi
     
-    log "Restart complete ✓"
+    log "Restart complete"
 }
 
 # Stop services
@@ -1358,7 +1380,7 @@ stop_services() {
     
     log "Stopping all services..."
     docker compose -f "$COMPOSE_FILE" down
-    log "All services stopped ✓"
+    log "All services stopped"
 }
 
 # Start services  
@@ -1369,7 +1391,7 @@ start_services() {
     
     log "Starting all services..."
     docker compose -f "$COMPOSE_FILE" up -d
-    log "All services started ✓"
+    log "All services started"
 }
 
 # Show usage
