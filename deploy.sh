@@ -78,6 +78,100 @@ prompt() {
     echo "$user_input"
 }
 
+# GitHub authentication and testing
+github_auth() {
+    log "GitHub authentication required for TofuPilot image access..."
+    echo
+    echo "The TofuPilot image is private and requires GitHub authentication."
+    echo "You need a GitHub Personal Access Token with 'read:packages' permission."
+    echo "Create one at: https://github.com/settings/tokens"
+    echo
+    
+    # Get credentials
+    echo -n "GitHub Username: "
+    read github_username
+    
+    echo -n "GitHub Personal Access Token: "
+    read -s github_token
+    echo
+    
+    if [ -z "$github_username" ] || [ -z "$github_token" ]; then
+        error "Username and token are required"
+    fi
+    
+    echo
+    log "Starting GitHub authentication tests..."
+    
+    # Test 1: GitHub API access
+    echo
+    info "Test 1: Testing GitHub API access with PAT..."
+    if curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep -q "login"; then
+        log "✓ GitHub API access successful"
+        github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
+        info "Authenticated as: $github_user"
+    else
+        error "✗ GitHub API access failed - check your PAT
+        
+Make sure your PAT has the following permissions:
+  - read:packages (required)
+  - repo (if accessing private repos)"
+    fi
+    
+    # Test 2: Package registry access
+    echo
+    info "Test 2: Testing GitHub Packages API access..."
+    if curl -s -H "Authorization: token $github_token" "https://api.github.com/user/packages?package_type=container" >/dev/null; then
+        log "✓ GitHub Packages API access successful"
+    else
+        warn "⚠ GitHub Packages API access limited (this may be normal)"
+    fi
+    
+    # Test 3: Docker logout and clean slate
+    echo
+    info "Test 3: Cleaning Docker authentication state..."
+    docker logout >/dev/null 2>&1 || true
+    log "✓ Docker logout completed"
+    
+    # Test 4: Docker login to ghcr.io
+    echo
+    info "Test 4: Testing Docker login to GitHub Container Registry..."
+    if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin >/dev/null 2>&1; then
+        log "✓ Docker login to ghcr.io successful"
+    else
+        error "✗ Docker login to ghcr.io failed
+
+Possible issues:
+  1. PAT doesn't have 'read:packages' permission
+  2. PAT is expired or invalid
+  3. Username is incorrect"
+    fi
+    
+    # Test 5: Test pull specific TofuPilot image
+    echo
+    info "Test 5: Testing access to TofuPilot image..."
+    if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
+        log "✓ TofuPilot image pull successful"
+        
+        # Get image info
+        image_id=$(docker images ghcr.io/tofupilot/tofupilot:latest --format "{{.ID}}")
+        image_size=$(docker images ghcr.io/tofupilot/tofupilot:latest --format "{{.Size}}")
+        info "Image ID: $image_id"
+        info "Image Size: $image_size"
+    else
+        error "✗ TofuPilot image pull failed
+
+This could mean:
+  1. You don't have access to the tofupilot/tofupilot repository
+  2. The repository doesn't exist or is private
+  3. PAT permissions are insufficient"
+    fi
+    
+    echo
+    log "=== GITHUB AUTHENTICATION COMPLETE ==="
+    info "All authentication tests passed successfully"
+    info "GitHub authentication verified ✓"
+}
+
 # Check system requirements
 check_requirements() {
     log "Checking system requirements..."
@@ -736,100 +830,7 @@ deploy() {
     
     # Pull latest images
     log "📥 Pulling Docker images (this may take a few minutes)..."
-    info "TofuPilot uses GitHub Container Registry which may require authentication..."
-    
-    # GitHub authentication for TofuPilot access
-    info "GitHub authentication required for TofuPilot image access..."
-    echo
-    echo "The TofuPilot image is private and requires GitHub authentication."
-    echo "You need a GitHub Personal Access Token with 'read:packages' permission."
-    echo "Create one at: https://github.com/settings/tokens"
-    echo
-    
-    # Get credentials
-    echo -n "GitHub Username: "
-    read github_username
-    
-    echo -n "GitHub Personal Access Token: "
-    read -s github_token
-    echo
-    
-    if [ -z "$github_username" ] || [ -z "$github_token" ]; then
-        error "Username and token are required"
-    fi
-    
-    echo
-    log "Starting GitHub authentication tests..."
-    
-    # Test 1: GitHub API access
-    echo
-    info "Test 1: Testing GitHub API access with PAT..."
-    if curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep -q "login"; then
-        log "✓ GitHub API access successful"
-        github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
-        info "Authenticated as: $github_user"
-    else
-        error "✗ GitHub API access failed - check your PAT
-        
-Make sure your PAT has the following permissions:
-  - read:packages (required)
-  - repo (if accessing private repos)"
-    fi
-    
-    # Test 2: Package registry access
-    echo
-    info "Test 2: Testing GitHub Packages API access..."
-    if curl -s -H "Authorization: token $github_token" "https://api.github.com/user/packages?package_type=container" >/dev/null; then
-        log "✓ GitHub Packages API access successful"
-    else
-        warn "⚠ GitHub Packages API access limited (this may be normal)"
-    fi
-    
-    # Test 3: Docker logout and clean slate
-    echo
-    info "Test 3: Cleaning Docker authentication state..."
-    docker logout >/dev/null 2>&1 || true
-    log "✓ Docker logout completed"
-    
-    # Test 4: Docker login to ghcr.io
-    echo
-    info "Test 4: Testing Docker login to GitHub Container Registry..."
-    if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin >/dev/null 2>&1; then
-        log "✓ Docker login to ghcr.io successful"
-    else
-        error "✗ Docker login to ghcr.io failed
-
-Possible issues:
-  1. PAT doesn't have 'read:packages' permission
-  2. PAT is expired or invalid
-  3. Username is incorrect"
-    fi
-    
-    # Test 5: Test pull specific TofuPilot image
-    echo
-    info "Test 5: Testing access to TofuPilot image..."
-    if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
-        log "✓ TofuPilot image pull successful"
-        
-        # Get image info
-        image_id=$(docker images ghcr.io/tofupilot/tofupilot:latest --format "{{.ID}}")
-        image_size=$(docker images ghcr.io/tofupilot/tofupilot:latest --format "{{.Size}}")
-        info "Image ID: $image_id"
-        info "Image Size: $image_size"
-    else
-        error "✗ TofuPilot image pull failed
-
-This could mean:
-  1. You don't have access to the tofupilot/tofupilot repository
-  2. The repository doesn't exist or is private
-  3. PAT permissions are insufficient"
-    fi
-    
-    echo
-    log "=== GITHUB AUTHENTICATION COMPLETE ==="
-    info "All authentication tests passed successfully"
-    info "Proceeding with deployment..."
-    
+    info "TofuPilot uses GitHub Container Registry - authentication already verified..."
     info "Downloading TofuPilot application image from GitHub Container Registry..."
     info "Note: Using AMD64 platform (TofuPilot doesn't support ARM64 yet)"
     info "Downloading Traefik reverse proxy image..."
@@ -1649,12 +1650,18 @@ fi
 echo "=================================================================="
 echo
 
-info "Step 1/5: System Requirements Check"
+info "Step 1/6: System Requirements Check"
 info "🔍 Checking if your system is ready for TofuPilot..."
 check_requirements
 
 echo
-info "Step 2/5: Configuration Collection"
+info "Step 2/6: GitHub Authentication"
+info "🔐 Setting up GitHub access for TofuPilot image download..."
+info "This must be done first to verify access to private TofuPilot images..."
+github_auth
+
+echo
+info "Step 3/6: Configuration Collection"
 info "📝 Now we'll gather the information needed for your TofuPilot setup..."
 collect_config
 
@@ -1685,17 +1692,17 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 echo
-info "Step 3/5: Service Deployment"
+info "Step 4/6: Service Deployment"
 info "🚀 Time to deploy TofuPilot! This is where the magic happens..."
 deploy
 
 echo
-info "Step 4/5: Final Verification"
+info "Step 5/6: Final Verification"
 info "🔍 Almost done! Just verifying everything is working properly..."
 sleep 3  # Brief pause for services to stabilize
 
 echo
-info "Step 5/5: Deployment Summary"
+info "Step 6/6: Deployment Summary"
 info "📋 Generating your deployment summary and next steps..."
 show_info
 
