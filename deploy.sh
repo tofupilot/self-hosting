@@ -542,37 +542,37 @@ collect_config() {
     # Domain Configuration
     echo "Domain Configuration:"
     if [ "$LOCAL_MODE" = "true" ]; then
-        DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Local domain name" false)
+        DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
         if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="localhost"; fi
         
-        # Storage domain with smart default
+        # Auto-generate storage domain with option to change
         local storage_default="localhost:9000"
         local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
         if [ -n "$existing_storage" ]; then
             storage_default="$existing_storage"
         fi
-        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain name" "$storage_default" false)
+        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
         
         ACME_EMAIL="admin@localhost"
     else
         DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
         if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="tofupilot.example.com"; fi
         
-        # Storage domain with smart default based on main domain
+        # Auto-generate storage domain based on main domain
         local storage_default="storage.${DOMAIN_NAME}"
         local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
         if [ -n "$existing_storage" ]; then
             storage_default="$existing_storage"
         fi
-        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain name" "$storage_default" false)
+        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
         
-        # SSL email with smart default based on main domain
+        # Auto-generate SSL email based on main domain  
         local email_default="admin@${DOMAIN_NAME}"
         local existing_email=$(get_env_value "ACME_EMAIL")
         if [ -n "$existing_email" ]; then
             email_default="$existing_email"
         fi
-        ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "Email for SSL certificates" "$email_default" false)
+        ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "SSL certificate email" "$email_default" false)
     fi
     
     echo
