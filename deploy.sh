@@ -293,8 +293,6 @@ create_compose_file() {
   if [[ "$IS_LOCAL_MODE" == "true" ]]; then
     # Local mode without SSL
     cat > "$COMPOSE_FILE" <<'EOF'
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
@@ -400,8 +398,6 @@ EOF
   else
     # Production mode with SSL
     cat > "$COMPOSE_FILE" <<'EOF'
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
