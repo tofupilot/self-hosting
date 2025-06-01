@@ -356,8 +356,8 @@ services:
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - GEL_SERVER_PASSWORD=${EDGEDB_PASSWORD}
-      - GEL_SERVER_SECURITY=insecure_dev_mode
+      - EDGEDB_SERVER_PASSWORD=${EDGEDB_PASSWORD}
+      - EDGEDB_SERVER_SECURITY=insecure_dev_mode
     volumes:
       - database-data:/var/lib/edgedb/data
     ports:
@@ -440,7 +440,6 @@ services:
       - NEXTAUTH_URL=https://${DOMAIN_NAME}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
-      - EDGEDB_CLIENT_TLS_SECURITY=insecure
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
@@ -1086,8 +1085,11 @@ create_backup() {
     if docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
         log "Backing up EdgeDB database..."
         info "Creating database dump - this may take a few minutes..."
-        # Use insecure TLS for self-signed certificates (both local and production)
-        local tls_flag="--tls-security=insecure"
+        # Check if local mode for TLS settings
+        local tls_flag=""
+        if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
+            tls_flag="--tls-security=insecure"
+        fi
         docker compose -f "$COMPOSE_FILE" exec -T database gel dump $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
             warn "Database backup failed - database might not be running"
         }
@@ -1172,8 +1174,11 @@ restore_backup() {
     # Restore database
     if [ -f "$backup_dir/database.dump" ]; then
         log "Restoring database..."
-        # Use insecure TLS for self-signed certificates (both local and production)
-        local tls_flag="--tls-security=insecure"
+        # Check if local mode for TLS settings
+        local tls_flag=""
+        if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
+            tls_flag="--tls-security=insecure"
+        fi
         docker compose -f "$COMPOSE_FILE" exec -T database gel restore $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
             warn "Database restore failed - continuing with other services"
         }
@@ -1216,8 +1221,11 @@ run_migrations() {
     log "Waiting for database to be ready..."
     local retry_count=0
     while [ $retry_count -lt 30 ]; do
-        # Use insecure TLS for self-signed certificates (both local and production)
-        local tls_flag="--tls-security=insecure"
+        # Check if local mode for TLS settings
+        local tls_flag=""
+        if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
+            tls_flag="--tls-security=insecure"
+        fi
         if docker compose -f "$COMPOSE_FILE" exec -T database gel query $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
             break
         fi
