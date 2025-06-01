@@ -75,8 +75,16 @@ check_requirements() {
     info "Validating your system can run TofuPilot..."
     
     # Check if running as root
-    if [ "$EUID" -eq 0 ]; then
-        error "Please don't run this script as root. It will ask for sudo when needed."
+    if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "false" ]; then
+        error "Please don't run this script as root. It will ask for sudo when needed.
+
+Use --allow-root flag to bypass this check if you're in a controlled environment:
+  bash <(curl -s URL) --allow-root"
+    fi
+    
+    if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "true" ]; then
+        warn "Running as root user - this may cause file ownership issues"
+        warn "Consider creating a non-root user for better security"
     fi
     
     # Check OS
@@ -1455,6 +1463,7 @@ usage() {
     echo "Main Commands:"
     echo "  (no options)            Fresh TofuPilot installation"
     echo "  --local                 Local development setup (no SSL)"
+    echo "  --allow-root            Allow running as root user (use with caution)"
     echo "  --update                Update existing deployment"
     echo
     echo "Backup & Restore:"
@@ -1477,6 +1486,8 @@ usage() {
     echo "Examples:"
     echo "  $0                      # Fresh installation"
     echo "  $0 --local              # Local development setup"
+    echo "  $0 --allow-root         # Fresh installation as root user"
+    echo "  $0 --allow-root --local # Local setup as root user"
     echo "  $0 --update             # Update existing installation"
     echo "  $0 --backup             # Create backup with timestamp"
     echo "  $0 --backup my-backup   # Create backup with custom name"
@@ -1495,12 +1506,24 @@ usage() {
 
 # Initialize variables
 LOCAL_MODE="false"
+ALLOW_ROOT="false"
 
 # Parse command line arguments
 case "${1:-}" in
     --local)
         LOCAL_MODE="true"
         shift
+        ;;
+    --allow-root)
+        ALLOW_ROOT="true"
+        shift
+        # Check if there's a second argument
+        case "${1:-}" in
+            --local)
+                LOCAL_MODE="true"
+                shift
+                ;;
+        esac
         ;;
     --update)
         log "🔄 Starting TofuPilot update process..."
