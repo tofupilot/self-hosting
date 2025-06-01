@@ -579,32 +579,66 @@ collect_config() {
     
     echo
     echo "Security Configuration:"
-    NEXTAUTH_SECRET=$(prompt_env "NEXTAUTH_SECRET" "NextAuth secret" true)
-    if [ -z "$NEXTAUTH_SECRET" ]; then NEXTAUTH_SECRET=$(generate_password); fi
+    info "Generating secure passwords automatically..."
     
-    EDGEDB_PASSWORD=$(prompt_env "EDGEDB_PASSWORD" "Database password" true)
-    if [ -z "$EDGEDB_PASSWORD" ]; then EDGEDB_PASSWORD=$(generate_password); fi
+    # Auto-generate security variables, only use existing if they exist
+    NEXTAUTH_SECRET=$(get_env_value "NEXTAUTH_SECRET")
+    if [ -z "$NEXTAUTH_SECRET" ]; then 
+        NEXTAUTH_SECRET=$(generate_password)
+        log "Generated NextAuth secret"
+    else
+        log "Using existing NextAuth secret"
+    fi
     
-    MINIO_SECRET_KEY=$(prompt_env "MINIO_SECRET_KEY" "Storage secret key" true)
-    if [ -z "$MINIO_SECRET_KEY" ]; then MINIO_SECRET_KEY=$(generate_password); fi
+    EDGEDB_PASSWORD=$(get_env_value "EDGEDB_PASSWORD")
+    if [ -z "$EDGEDB_PASSWORD" ]; then 
+        EDGEDB_PASSWORD=$(generate_password)
+        log "Generated database password"
+    else
+        log "Using existing database password"
+    fi
+    
+    MINIO_SECRET_KEY=$(get_env_value "MINIO_SECRET_KEY")
+    if [ -z "$MINIO_SECRET_KEY" ]; then 
+        MINIO_SECRET_KEY=$(generate_password)
+        log "Generated storage secret key"
+    else
+        log "Using existing storage secret key"
+    fi
     
     echo
     echo "Authentication Configuration (optional):"
-    GOOGLE_CLIENT_ID=$(prompt_env "GOOGLE_CLIENT_ID" "Google OAuth Client ID" false)
-    if [ -n "$GOOGLE_CLIENT_ID" ]; then
+    
+    # Google OAuth
+    printf "Configure Google OAuth? (y/N): " >&2
+    read -r configure_google
+    if [[ "$configure_google" =~ ^[Yy]$ ]]; then
+        GOOGLE_CLIENT_ID=$(prompt_env "GOOGLE_CLIENT_ID" "Google OAuth Client ID" false)
         GOOGLE_CLIENT_SECRET=$(prompt_env "GOOGLE_CLIENT_SECRET" "Google OAuth Client Secret" true)
+    else
+        GOOGLE_CLIENT_ID=""
+        GOOGLE_CLIENT_SECRET=""
     fi
     
-    AZURE_AD_CLIENT_ID=$(prompt_env "AZURE_AD_CLIENT_ID" "Azure AD Client ID" false)
-    if [ -n "$AZURE_AD_CLIENT_ID" ]; then
+    # Azure AD
+    printf "Configure Azure AD? (y/N): " >&2
+    read -r configure_azure
+    if [[ "$configure_azure" =~ ^[Yy]$ ]]; then
+        AZURE_AD_CLIENT_ID=$(prompt_env "AZURE_AD_CLIENT_ID" "Azure AD Client ID" false)
         AZURE_AD_CLIENT_SECRET=$(prompt_env "AZURE_AD_CLIENT_SECRET" "Azure AD Client Secret" true)
         AZURE_AD_TENANT_ID=$(prompt_env "AZURE_AD_TENANT_ID" "Azure AD Tenant ID" false)
+    else
+        AZURE_AD_CLIENT_ID=""
+        AZURE_AD_CLIENT_SECRET=""
+        AZURE_AD_TENANT_ID=""
     fi
     
     echo
     echo "Email Configuration (optional):"
-    SMTP_HOST=$(prompt_env "SMTP_HOST" "SMTP server hostname" false)
-    if [ -n "$SMTP_HOST" ]; then
+    printf "Configure SMTP email? (y/N): " >&2
+    read -r configure_smtp
+    if [[ "$configure_smtp" =~ ^[Yy]$ ]]; then
+        SMTP_HOST=$(prompt_env "SMTP_HOST" "SMTP server hostname" false)
         SMTP_PORT=$(prompt_env "SMTP_PORT" "SMTP port" false)
         if [ -z "$SMTP_PORT" ]; then SMTP_PORT="587"; fi
         
@@ -612,6 +646,12 @@ collect_config() {
         SMTP_PASSWORD=$(prompt_env "SMTP_PASSWORD" "SMTP password" true)
         EMAIL_FROM=$(prompt_env "EMAIL_FROM" "From email address" false)
         if [ -z "$EMAIL_FROM" ]; then EMAIL_FROM="$ACME_EMAIL"; fi
+    else
+        SMTP_HOST=""
+        SMTP_PORT="587"
+        SMTP_USER=""
+        SMTP_PASSWORD=""
+        EMAIL_FROM=""
     fi
     
     echo
