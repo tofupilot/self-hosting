@@ -326,8 +326,11 @@ services:
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - EDGEDB_SERVER_PASSWORD=${EDGEDB_PASSWORD}
-      - EDGEDB_SERVER_SECURITY=insecure_dev_mode
+      - GEL_SERVER_PASSWORD=${EDGEDB_PASSWORD}
+      - GEL_SERVER_SECURITY=insecure_dev_mode
+      - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
+      - GEL_SERVER_UNENCRYPTED_HTTP=true
+      - GEL_SERVER_TLS_MODE=disabled
     volumes:
       - database-data:/var/lib/edgedb/data
     ports:
@@ -442,7 +445,8 @@ services:
     restart: unless-stopped
     environment:
       - GEL_SERVER_PASSWORD=${EDGEDB_PASSWORD}
-      - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
+      - GEL_SERVER_SECURITY=insecure_dev_mode
+      - GEL_SERVER_TLS_MODE=disabled
     volumes:
       - database-data:/var/lib/edgedb/data
     ports:
@@ -987,9 +991,18 @@ create_backup() {
         if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
             tls_flag="--tls-security=insecure"
         fi
-        docker compose -f "$COMPOSE_FILE" exec -T database gel dump $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
-            warn "Database backup failed - database might not be running"
-        }
+        # Try backing up with different database names
+        if docker compose -f "$COMPOSE_FILE" exec -T database gel dump --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656?tls_security=insecure" /tmp/backup.dump >/dev/null 2>&1; then
+            docker compose -f "$COMPOSE_FILE" exec -T database cat /tmp/backup.dump > "$backup_dir/database.dump"
+            docker compose -f "$COMPOSE_FILE" exec -T database rm /tmp/backup.dump
+            log "Database backup completed (default database)"
+        elif docker compose -f "$COMPOSE_FILE" exec -T database gel dump --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656/main?tls_security=insecure" /tmp/backup.dump >/dev/null 2>&1; then
+            docker compose -f "$COMPOSE_FILE" exec -T database cat /tmp/backup.dump > "$backup_dir/database.dump"
+            docker compose -f "$COMPOSE_FILE" exec -T database rm /tmp/backup.dump
+            log "Database backup completed (main database)"
+        else
+            warn "Database backup failed - no accessible database found"
+        fi
 
     else
         warn "Database service not running - skipping database backup"
@@ -1076,7 +1089,9 @@ restore_backup() {
         if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
             tls_flag="--tls-security=insecure"
         fi
-        docker compose -f "$COMPOSE_FILE" exec -T database gel restore $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
+        docker compose -f "$COMPOSE_FILE" exec -T database sh -c "cat > /tmp/restore.dump" < "$backup_dir/database.dump" && \
+        docker compose -f "$COMPOSE_FILE" exec -T database gel restore --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656/edgedb?tls_security=insecure" /tmp/restore.dump && \
+        docker compose -f "$COMPOSE_FILE" exec -T database rm /tmp/restore.dump || {
             warn "Database restore failed - continuing with other services"
         }
     fi
@@ -1106,7 +1121,8 @@ restore_backup() {
     log "Restore complete"
 }
 
-# Run database migrations
+
+# Run database migrations (original function for backward compatibility)
 run_migrations() {
     log "Running database migrations..."
     
@@ -1118,87 +1134,70 @@ run_migrations() {
     log "Waiting for database to be ready..."
     local retry_count=0
     while [ $retry_count -lt 30 ]; do
-        # Check if local mode for TLS settings
-        local tls_flag=""
-        if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
-            tls_flag="--tls-security=insecure"
-        fi
-        if docker compose -f "$COMPOSE_FILE" exec -T database gel query $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
-            break
+        # Check if database container is running and responding
+        if docker compose -f "$COMPOSE_FILE" exec -T database sh -c "ps aux | grep -q gel" 2>/dev/null; then
+            # Check if we can connect to the database
+            local tls_flag=""
+            if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
+                tls_flag="--tls-security=insecure"
+            fi
+            # Try connecting to default database first
+            if docker compose -f "$COMPOSE_FILE" exec -T database gel query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656?tls_security=insecure" "SELECT 1" >/dev/null 2>&1; then
+                # Try to create edgedb database if it doesn't exist
+                docker compose -f "$COMPOSE_FILE" exec -T database gel query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656?tls_security=insecure" "CREATE DATABASE edgedb" >/dev/null 2>&1 || true
+                break
+            elif docker compose -f "$COMPOSE_FILE" exec -T database gel query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656/main?tls_security=insecure" "SELECT 1" >/dev/null 2>&1; then
+                break
+            fi
         fi
         sleep 2
         retry_count=$((retry_count + 1))
     done
     
     if [ $retry_count -eq 30 ]; then
-        error "Database failed to become ready after 60 seconds"
+        warn "Database failed to become ready after 60 seconds"
+        info "Continuing without migrations - you can run them manually later with: ./deploy.sh --migrate"
+        return 0
     fi
     
     # Run migrations through the app container
     log "Applying database schema migrations..."
-    docker compose -f "$COMPOSE_FILE" exec -T app npm run migrate || {
+    if docker compose -f "$COMPOSE_FILE" exec -T app npm run migrate 2>/dev/null; then
+        log "Database migrations completed successfully"
+    else
         warn "Migration command failed - this might be normal if no migrations are needed"
-    }
+        info "Checking if app can connect to database..."
+        if docker compose -f "$COMPOSE_FILE" exec -T app node -e "console.log('App container is working')" 2>/dev/null; then
+            log "App container is responsive"
+        else
+            warn "App container may have issues"
+        fi
+    fi
     
     log "Database migrations complete"
 }
 
-# Update existing deployment
+# Update existing deployment (simple main branch style)
 update() {
     log "Updating TofuPilot..."
-    info "This process will update your TofuPilot installation to the latest version"
+    info "Pulling latest Docker images and restarting services..."
     
     if [ ! -f "$COMPOSE_FILE" ]; then
         error "No existing deployment found. Run without --update flag first."
     fi
     
-    # Source environment
-    if [ -f "$ENV_FILE" ]; then
-        set -a
-        source "$ENV_FILE"
-        set +a
-    fi
-    
-    # Create pre-update backup
-    local backup_name="pre-update-$(date +%Y%m%d_%H%M%S)"
-    info "Creating pre-update backup for safety..."
-    create_backup "$backup_name"
-    
     # Pull latest images
     log "Pulling latest Docker images..."
-    info "Downloading updated TofuPilot components..."
-    info "This may take several minutes depending on your connection..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
+    docker compose -f "$COMPOSE_FILE" pull
     
-    # Stop services gracefully
-    log "Stopping services for update..."
-    info "Gracefully shutting down all services..."
-    docker compose -f "$COMPOSE_FILE" down
-    
-    # Start database first
-    log "Starting database service..."
-    info "Database needs to start first for migrations..."
-    docker compose -f "$COMPOSE_FILE" up -d database
-    
-    # Run migrations
-    info "Waiting for database to be ready for migrations..."
-    sleep 15  # Wait for database to be ready
-    run_migrations
-    
-    # Start all services
-    log "Starting all services..."
-    info "Bringing up all updated services..."
+    # Restart services (like main branch does)
+    log "Restarting services with latest images..."
     docker compose -f "$COMPOSE_FILE" up -d
     
-    # Verify services are running
-    log "Verifying services..."
-    info "Checking that all services started successfully..."
-    sleep 10
+    # Simple verification (like main branch)
     if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
-        log "Update complete"
-        echo "  Backup created: backups/$backup_name"
-        echo "  Services are running normally"
-        info "TofuPilot has been successfully updated!"
+        log "Update complete - services are running"
+        info "TofuPilot has been updated to the latest version"
     else
         error "Update failed - some services are not running. Check logs with: docker compose logs"
     fi
