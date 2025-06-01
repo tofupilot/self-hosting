@@ -367,7 +367,7 @@ services:
       - EMAIL_FROM=${EMAIL_FROM:-}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(\`${DOMAIN_NAME}\`)"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}\`)"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=letsencrypt"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
@@ -396,7 +396,7 @@ services:
       - storage-data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.storage.rule=Host(\`${STORAGE_DOMAIN_NAME}\`)"
+      - "traefik.http.routers.storage.rule=Host(`${STORAGE_DOMAIN_NAME}\`)"
       - "traefik.http.routers.storage.entrypoints=websecure"
       - "traefik.http.routers.storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.storage.loadbalancer.server.port=9000"
