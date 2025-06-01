@@ -1177,31 +1177,6 @@ run_migrations() {
     log "Database migrations complete"
 }
 
-# Update existing deployment (simple main branch style)
-update() {
-    log "Updating TofuPilot..."
-    info "Pulling latest Docker images and restarting services..."
-    
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No existing deployment found. Run without --update flag first."
-    fi
-    
-    # Pull latest images
-    log "Pulling latest Docker images..."
-    docker compose -f "$COMPOSE_FILE" pull
-    
-    # Restart services (like main branch does)
-    log "Restarting services with latest images..."
-    docker compose -f "$COMPOSE_FILE" up -d
-    
-    # Simple verification (like main branch)
-    if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
-        log "Update complete - services are running"
-        info "TofuPilot has been updated to the latest version"
-    else
-        error "Update failed - some services are not running. Check logs with: docker compose logs"
-    fi
-}
 
 # List available backups
 list_backups() {
@@ -1388,7 +1363,6 @@ usage() {
     echo "  (no options)            Fresh TofuPilot installation"
     echo "  --local                 Local development setup (no SSL)"
     echo "  --allow-root            Allow running as root user (use with caution)"
-    echo "  --update                Update existing deployment"
     echo
     echo "Backup & Restore:"
     echo "  --backup [name]         Create backup (optional custom name)"
@@ -1448,11 +1422,6 @@ case "${1:-}" in
                 shift
                 ;;
         esac
-        ;;
-    --update)
-        log "🔄 Starting TofuPilot update process..."
-        update
-        exit 0
         ;;
     --backup)
         if [ ! -f "$COMPOSE_FILE" ]; then
