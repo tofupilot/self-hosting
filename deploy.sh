@@ -832,6 +832,15 @@ deploy() {
     
     if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
         log "Docker images downloaded ✓"
+        
+        # Display pulled image versions
+        echo
+        info "Downloaded image versions:"
+        echo "  TofuPilot: $(docker inspect ghcr.io/tofupilot/tofupilot:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
+        echo "  Traefik: $(docker inspect traefik:v3.0 --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo 'v3.0')"
+        echo "  EdgeDB: $(docker run --rm edgedb/edgedb:latest edgedb --version 2>/dev/null | head -1 || echo 'latest')"
+        echo "  MinIO: $(docker inspect minio/minio:latest --format='{{index .Config.Labels "version"}}' 2>/dev/null || docker inspect minio/minio:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
+        echo
     else
         error "Failed to pull Docker images. If TofuPilot image access was denied, you may need proper credentials or access permissions."
     fi
