@@ -326,6 +326,7 @@ services:
       - NEXTAUTH_URL=http://${DOMAIN_NAME}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
+      - EDGEDB_CLIENT_TLS_SECURITY=insecure
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=http://${STORAGE_DOMAIN_NAME}
@@ -356,7 +357,7 @@ services:
     restart: unless-stopped
     environment:
       - GEL_SERVER_PASSWORD=${EDGEDB_PASSWORD}
-      - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
+      - GEL_SERVER_SECURITY=insecure_dev_mode
     volumes:
       - database-data:/var/lib/edgedb/data
     ports:
@@ -439,6 +440,7 @@ services:
       - NEXTAUTH_URL=https://${DOMAIN_NAME}
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
+      - EDGEDB_CLIENT_TLS_SECURITY=insecure
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
@@ -840,7 +842,7 @@ deploy() {
         info "Downloaded image versions:"
         echo "  TofuPilot: $(docker inspect ghcr.io/tofupilot/tofupilot:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
         echo "  Traefik: $(docker inspect traefik:v3.0 --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || echo 'v3.0')"
-        echo "  EdgeDB: $(docker run --rm edgedb/edgedb:latest gel query 'SELECT sys::get_version_as_str()' 2>/dev/null | tail -1 | tr -d '"' || echo 'latest')"
+        echo "  EdgeDB: $(docker inspect edgedb/edgedb:latest --format='{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || docker inspect edgedb/edgedb:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
         echo "  MinIO: $(docker inspect minio/minio:latest --format='{{index .Config.Labels "version"}}' 2>/dev/null || docker inspect minio/minio:latest --format='{{index .RepoDigests 0}}' 2>/dev/null | cut -d'@' -f2 | cut -c1-12 || echo 'latest')"
         echo
     else
@@ -1084,7 +1086,9 @@ create_backup() {
     if docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
         log "Backing up EdgeDB database..."
         info "Creating database dump - this may take a few minutes..."
-        docker compose -f "$COMPOSE_FILE" exec -T database gel dump --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
+        # Use insecure TLS for self-signed certificates (both local and production)
+        local tls_flag="--tls-security=insecure"
+        docker compose -f "$COMPOSE_FILE" exec -T database gel dump $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
             warn "Database backup failed - database might not be running"
         }
 
@@ -1168,7 +1172,9 @@ restore_backup() {
     # Restore database
     if [ -f "$backup_dir/database.dump" ]; then
         log "Restoring database..."
-        docker compose -f "$COMPOSE_FILE" exec -T database gel restore --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
+        # Use insecure TLS for self-signed certificates (both local and production)
+        local tls_flag="--tls-security=insecure"
+        docker compose -f "$COMPOSE_FILE" exec -T database gel restore $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
             warn "Database restore failed - continuing with other services"
         }
     fi
@@ -1210,7 +1216,9 @@ run_migrations() {
     log "Waiting for database to be ready..."
     local retry_count=0
     while [ $retry_count -lt 30 ]; do
-        if docker compose -f "$COMPOSE_FILE" exec -T database gel query --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
+        # Use insecure TLS for self-signed certificates (both local and production)
+        local tls_flag="--tls-security=insecure"
+        if docker compose -f "$COMPOSE_FILE" exec -T database gel query $tls_flag --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
             break
         fi
         sleep 2
