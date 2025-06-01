@@ -607,7 +607,20 @@ collect_config() {
     fi
     
     echo
-    echo "Authentication Configuration (optional):"
+    echo "Authentication Configuration (required - choose at least one):"
+    info "TofuPilot requires at least one authentication method"
+    
+    # Check existing configuration
+    existing_google=$(get_env_value "GOOGLE_CLIENT_ID")
+    existing_azure=$(get_env_value "AZURE_AD_CLIENT_ID")
+    existing_smtp=$(get_env_value "SMTP_HOST")
+    
+    # Initialize variables
+    GOOGLE_CLIENT_ID=""
+    GOOGLE_CLIENT_SECRET=""
+    AZURE_AD_CLIENT_ID=""
+    AZURE_AD_CLIENT_SECRET=""
+    AZURE_AD_TENANT_ID=""
     
     # Google OAuth
     printf "Configure Google OAuth? (y/N): " >&2
@@ -615,9 +628,14 @@ collect_config() {
     if [[ "$configure_google" =~ ^[Yy]$ ]]; then
         GOOGLE_CLIENT_ID=$(prompt_env "GOOGLE_CLIENT_ID" "Google OAuth Client ID" false)
         GOOGLE_CLIENT_SECRET=$(prompt_env "GOOGLE_CLIENT_SECRET" "Google OAuth Client Secret" true)
-    else
-        GOOGLE_CLIENT_ID=""
-        GOOGLE_CLIENT_SECRET=""
+    elif [ -n "$existing_google" ]; then
+        printf "Keep existing Google OAuth configuration? (Y/n): " >&2
+        read -r keep_google
+        if [[ ! "$keep_google" =~ ^[Nn]$ ]]; then
+            GOOGLE_CLIENT_ID="$existing_google"
+            GOOGLE_CLIENT_SECRET=$(get_env_value "GOOGLE_CLIENT_SECRET")
+            log "Keeping existing Google OAuth configuration"
+        fi
     fi
     
     # Azure AD
@@ -627,17 +645,70 @@ collect_config() {
         AZURE_AD_CLIENT_ID=$(prompt_env "AZURE_AD_CLIENT_ID" "Azure AD Client ID" false)
         AZURE_AD_CLIENT_SECRET=$(prompt_env "AZURE_AD_CLIENT_SECRET" "Azure AD Client Secret" true)
         AZURE_AD_TENANT_ID=$(prompt_env "AZURE_AD_TENANT_ID" "Azure AD Tenant ID" false)
-    else
-        AZURE_AD_CLIENT_ID=""
-        AZURE_AD_CLIENT_SECRET=""
-        AZURE_AD_TENANT_ID=""
+    elif [ -n "$existing_azure" ]; then
+        printf "Keep existing Azure AD configuration? (Y/n): " >&2
+        read -r keep_azure
+        if [[ ! "$keep_azure" =~ ^[Nn]$ ]]; then
+            AZURE_AD_CLIENT_ID="$existing_azure"
+            AZURE_AD_CLIENT_SECRET=$(get_env_value "AZURE_AD_CLIENT_SECRET")
+            AZURE_AD_TENANT_ID=$(get_env_value "AZURE_AD_TENANT_ID")
+            log "Keeping existing Azure AD configuration"
+        fi
+    fi
+    
+    # Check if at least one auth method is configured
+    if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ] && [ -z "$existing_smtp" ]; then
+        warn "No authentication method configured!"
+        echo "TofuPilot requires at least one authentication method:"
+        echo "1. Google OAuth"
+        echo "2. Azure AD"
+        echo "3. Email/SMTP (configured in next step)"
+        echo
+        warn "You must configure at least Google OAuth or Azure AD now, or SMTP email in the next step"
+        echo
+        
+        # Force at least one configuration
+        while [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ]; do
+            printf "Configure Google OAuth now? (y/N): " >&2
+            read -r force_google
+            if [[ "$force_google" =~ ^[Yy]$ ]]; then
+                GOOGLE_CLIENT_ID=$(prompt_env "GOOGLE_CLIENT_ID" "Google OAuth Client ID" false)
+                GOOGLE_CLIENT_SECRET=$(prompt_env "GOOGLE_CLIENT_SECRET" "Google OAuth Client Secret" true)
+                break
+            fi
+            
+            printf "Configure Azure AD now? (y/N): " >&2
+            read -r force_azure
+            if [[ "$force_azure" =~ ^[Yy]$ ]]; then
+                AZURE_AD_CLIENT_ID=$(prompt_env "AZURE_AD_CLIENT_ID" "Azure AD Client ID" false)
+                AZURE_AD_CLIENT_SECRET=$(prompt_env "AZURE_AD_CLIENT_SECRET" "Azure AD Client Secret" true)
+                AZURE_AD_TENANT_ID=$(prompt_env "AZURE_AD_TENANT_ID" "Azure AD Tenant ID" false)
+                break
+            fi
+            
+            warn "You must configure at least one authentication method to continue"
+        done
     fi
     
     echo
-    echo "Email Configuration (optional):"
-    printf "Configure SMTP email? (y/N): " >&2
+    echo "Email Configuration (optional - but required if no OAuth configured):"
+    
+    # Check if SMTP is required (no OAuth methods configured)
+    local smtp_required=false
+    if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ]; then
+        smtp_required=true
+        warn "SMTP email is REQUIRED since no OAuth methods are configured"
+    fi
+    
+    if [ "$smtp_required" = "true" ]; then
+        printf "Configure SMTP email (required)? (Y/n): " >&2
+    else
+        printf "Configure SMTP email? (y/N): " >&2
+    fi
+    
     read -r configure_smtp
-    if [[ "$configure_smtp" =~ ^[Yy]$ ]]; then
+    
+    if [[ "$configure_smtp" =~ ^[Yy]$ ]] || ([[ ! "$configure_smtp" =~ ^[Nn]$ ]] && [ "$smtp_required" = "true" ]); then
         SMTP_HOST=$(prompt_env "SMTP_HOST" "SMTP server hostname" false)
         SMTP_PORT=$(prompt_env "SMTP_PORT" "SMTP port" false)
         if [ -z "$SMTP_PORT" ]; then SMTP_PORT="587"; fi
@@ -646,12 +717,19 @@ collect_config() {
         SMTP_PASSWORD=$(prompt_env "SMTP_PASSWORD" "SMTP password" true)
         EMAIL_FROM=$(prompt_env "EMAIL_FROM" "From email address" false)
         if [ -z "$EMAIL_FROM" ]; then EMAIL_FROM="$ACME_EMAIL"; fi
+    elif [ "$smtp_required" = "true" ]; then
+        error "SMTP email configuration is required when no OAuth methods are configured"
     else
         SMTP_HOST=""
         SMTP_PORT="587"
         SMTP_USER=""
         SMTP_PASSWORD=""
         EMAIL_FROM=""
+    fi
+    
+    # Final validation
+    if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ] && [ -z "$SMTP_HOST" ]; then
+        error "At least one authentication method must be configured (Google OAuth, Azure AD, or SMTP email)"
     fi
     
     echo
