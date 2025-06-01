@@ -6,7 +6,16 @@ set -e  # Exit on any error
 #----------------------------#
 #       Configuration        #
 #----------------------------#
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Handle case where script is run via curl pipe (BASH_SOURCE points to /dev/fd/XX or /proc/self/fd/XX)
+BASH_SOURCE_PATH="${BASH_SOURCE[0]}"
+if [[ "$BASH_SOURCE_PATH" =~ ^/dev/fd/ ]] || [[ "$BASH_SOURCE_PATH" =~ ^/proc/self/fd/ ]] || [[ ! -f "$BASH_SOURCE_PATH" ]]; then
+    # Script is run via pipe or doesn't exist as a real file, use current directory
+    SCRIPT_DIR="$(pwd)"
+    echo "[INFO] Script running from pipe - using current directory: $SCRIPT_DIR"
+else
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+fi
+
 CONFIG_FILE="$SCRIPT_DIR/.tofupilot.conf"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
