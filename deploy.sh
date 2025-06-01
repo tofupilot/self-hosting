@@ -332,6 +332,8 @@ services:
       - traefik-acme:/acme
     environment:
       - ACME_EMAIL=${ACME_EMAIL}
+    networks:
+      - web
 
   app:
     image: ghcr.io/tofupilot/tofupilot:latest
@@ -367,10 +369,12 @@ services:
       - EMAIL_FROM=${EMAIL_FROM:-}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}\`)"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}`)"
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=letsencrypt"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
+    networks:
+      - web
 
   database:
     image: edgedb/edgedb:latest
@@ -383,6 +387,8 @@ services:
       - database-data:/var/lib/edgedb/data
     ports:
       - "127.0.0.1:5656:5656"
+    networks:
+      - web
 
   storage:
     image: minio/minio:latest
@@ -396,15 +402,21 @@ services:
       - storage-data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.storage.rule=Host(`${STORAGE_DOMAIN_NAME}\`)"
+      - "traefik.http.routers.storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
       - "traefik.http.routers.storage.entrypoints=websecure"
       - "traefik.http.routers.storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.storage.loadbalancer.server.port=9000"
+    networks:
+      - web
 
 volumes:
   database-data:
   storage-data:
   traefik-acme:
+
+networks:
+  web:
+    driver: bridge
 EOF
   fi
 
@@ -856,19 +868,19 @@ https://tofupilot.com/docs"
     info "Removing any corrupted containers..."
     docker container prune -f 2>/dev/null || true
     
-    if docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
+    if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
         log "Services started ✓"
     else
         warn "Service startup failed. Attempting cleanup and retry..."
         
         # More aggressive cleanup
         info "Performing thorough cleanup..."
-        docker-compose -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
+        docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
         docker system prune -f 2>/dev/null || true
         
         # Try again
         info "Retrying service startup..."
-        if docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
+        if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
             log "Services started after cleanup ✓"
         else
             error "Failed to start services even after cleanup. 
@@ -878,7 +890,7 @@ Try manual cleanup:
 2. docker system prune -a -f
 3. ./deploy.sh --local
 
-Check logs with: docker-compose logs"
+Check logs with: docker compose logs"
         fi
     fi
     
@@ -905,7 +917,7 @@ Check logs with: docker-compose logs"
         log "All services are running ✓"
         
         # Check for exec format errors in app container
-        if docker-compose -f "$COMPOSE_FILE" logs app 2>/dev/null | grep -q "exec format error"; then
+        if docker compose -f "$COMPOSE_FILE" logs app 2>/dev/null | grep -q "exec format error"; then
             error "TofuPilot app failed with 'exec format error' - architecture compatibility issue.
 
 This happens on ARM64 systems (Apple Silicon Macs) when Docker can't emulate AMD64 images.
@@ -920,7 +932,7 @@ Solutions:
 3. **Alternative**: Contact TofuPilot for ARM64-native images
 
 Then restart the deployment:
-   docker-compose down
+   docker compose down
    ./deploy.sh --local"
         fi
         
@@ -992,7 +1004,7 @@ Then restart the deployment:
             fi
         fi
     else
-        error "Some services failed to start. Check logs with: docker-compose logs"
+        error "Some services failed to start. Check logs with: docker compose logs"
     fi
 }
 
@@ -1019,9 +1031,9 @@ show_info() {
         echo
     fi
     info "Useful commands:"
-    echo "  View logs:    docker-compose logs -f"
-    echo "  Stop:         docker-compose down"
-    echo "  Restart:      docker-compose restart"
+    echo "  View logs:    docker compose logs -f"
+    echo "  Stop:         docker compose down"
+    echo "  Restart:      docker compose restart"
     echo "  Status:       ./deploy.sh --status"
     echo
     info "Backup & Update commands:"
@@ -1074,10 +1086,10 @@ create_backup() {
     cp "$CONFIG_FILE" "$backup_dir/" 2>/dev/null || true
     
     # Backup database
-    if docker-compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
+    if docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
         log "Backing up EdgeDB database..."
         info "Creating database dump - this may take a few minutes..."
-        docker-compose -f "$COMPOSE_FILE" exec -T database edgedb dump --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
+        docker compose -f "$COMPOSE_FILE" exec -T database edgedb dump --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" > "$backup_dir/database.dump" || {
             warn "Database backup failed - database might not be running"
         }
 
@@ -1086,10 +1098,10 @@ create_backup() {
     fi
     
     # Backup storage data
-    if docker-compose -f "$COMPOSE_FILE" ps storage | grep -q "Up"; then
+    if docker compose -f "$COMPOSE_FILE" ps storage | grep -q "Up"; then
         log "Backing up storage data..."
         info "Compressing storage files - this may take several minutes..."
-        docker-compose -f "$COMPOSE_FILE" exec -T storage tar czf - /data 2>/dev/null > "$backup_dir/storage.tar.gz" || {
+        docker compose -f "$COMPOSE_FILE" exec -T storage tar czf - /data 2>/dev/null > "$backup_dir/storage.tar.gz" || {
             warn "Storage backup failed - creating volume backup instead"
             info "Trying alternative backup method..."
             # Fallback: backup docker volumes
@@ -1104,7 +1116,7 @@ create_backup() {
 TofuPilot Backup Manifest
 Created: $(date)
 Backup Name: $backup_name
-TofuPilot Version: $(docker-compose -f "$COMPOSE_FILE" images app | tail -n +2 | awk '{print $4}' || echo "unknown")
+TofuPilot Version: $(docker compose -f "$COMPOSE_FILE" images app | tail -n +2 | awk '{print $4}' || echo "unknown")
 Files Included:
 - .env (configuration)
 - docker-compose.yml (service definitions)
@@ -1134,7 +1146,7 @@ restore_backup() {
     # Stop current services
     if [ -f "$COMPOSE_FILE" ]; then
         log "Stopping current services..."
-        docker-compose -f "$COMPOSE_FILE" down
+        docker compose -f "$COMPOSE_FILE" down
     fi
     
     # Restore configuration files
@@ -1152,7 +1164,7 @@ restore_backup() {
     
     # Start services (database first)
     log "Starting database service..."
-    docker-compose -f "$COMPOSE_FILE" up -d database
+    docker compose -f "$COMPOSE_FILE" up -d database
     
     # Wait for database to be ready
     log "Waiting for database to be ready..."
@@ -1161,20 +1173,20 @@ restore_backup() {
     # Restore database
     if [ -f "$backup_dir/database.dump" ]; then
         log "Restoring database..."
-        docker-compose -f "$COMPOSE_FILE" exec -T database edgedb restore --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
+        docker compose -f "$COMPOSE_FILE" exec -T database edgedb restore --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" < "$backup_dir/database.dump" || {
             warn "Database restore failed - continuing with other services"
         }
     fi
     
     # Start storage service
     log "Starting storage service..."
-    docker-compose -f "$COMPOSE_FILE" up -d storage
+    docker compose -f "$COMPOSE_FILE" up -d storage
     sleep 10
     
     # Restore storage data
     if [ -f "$backup_dir/storage.tar.gz" ]; then
         log "Restoring storage data..."
-        docker-compose -f "$COMPOSE_FILE" exec -T storage sh -c "cd / && tar xzf -" < "$backup_dir/storage.tar.gz" || {
+        docker compose -f "$COMPOSE_FILE" exec -T storage sh -c "cd / && tar xzf -" < "$backup_dir/storage.tar.gz" || {
             warn "Storage restore failed"
         }
     elif [ -f "$backup_dir/storage-volume.tar.gz" ]; then
@@ -1186,7 +1198,7 @@ restore_backup() {
     
     # Start all services
     log "Starting all services..."
-    docker-compose -f "$COMPOSE_FILE" up -d
+    docker compose -f "$COMPOSE_FILE" up -d
     
     log "Restore complete ✓"
 }
@@ -1195,7 +1207,7 @@ restore_backup() {
 run_migrations() {
     log "Running database migrations..."
     
-    if ! docker-compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
+    if ! docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
         error "Database is not running. Start services first."
     fi
     
@@ -1203,7 +1215,7 @@ run_migrations() {
     log "Waiting for database to be ready..."
     local retry_count=0
     while [ $retry_count -lt 30 ]; do
-        if docker-compose -f "$COMPOSE_FILE" exec -T database edgedb query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
+        if docker compose -f "$COMPOSE_FILE" exec -T database edgedb query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb" "SELECT 1" >/dev/null 2>&1; then
             break
         fi
         sleep 2
@@ -1216,7 +1228,7 @@ run_migrations() {
     
     # Run migrations through the app container
     log "Applying database schema migrations..."
-    docker-compose -f "$COMPOSE_FILE" exec -T app npm run migrate || {
+    docker compose -f "$COMPOSE_FILE" exec -T app npm run migrate || {
         warn "Migration command failed - this might be normal if no migrations are needed"
     }
     
@@ -1248,17 +1260,17 @@ update() {
     log "Pulling latest Docker images..."
     info "Downloading updated TofuPilot components..."
     info "This may take several minutes depending on your connection..."
-    docker-compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull
     
     # Stop services gracefully
     log "Stopping services for update..."
     info "Gracefully shutting down all services..."
-    docker-compose -f "$COMPOSE_FILE" down
+    docker compose -f "$COMPOSE_FILE" down
     
     # Start database first
     log "Starting database service..."
     info "Database needs to start first for migrations..."
-    docker-compose -f "$COMPOSE_FILE" up -d database
+    docker compose -f "$COMPOSE_FILE" up -d database
     
     # Run migrations
     info "Waiting for database to be ready for migrations..."
@@ -1268,19 +1280,19 @@ update() {
     # Start all services
     log "Starting all services..."
     info "Bringing up all updated services..."
-    docker-compose -f "$COMPOSE_FILE" up -d
+    docker compose -f "$COMPOSE_FILE" up -d
     
     # Verify services are running
     log "Verifying services..."
     info "Checking that all services started successfully..."
     sleep 10
-    if docker-compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+    if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
         log "Update complete ✓"
         echo "  Backup created: backups/$backup_name"
         echo "  Services are running normally"
         info "TofuPilot has been successfully updated!"
     else
-        error "Update failed - some services are not running. Check logs with: docker-compose logs"
+        error "Update failed - some services are not running. Check logs with: docker compose logs"
     fi
 }
 
@@ -1362,7 +1374,7 @@ show_status() {
     
     # Show docker-compose status
     info "Docker Container Status:"
-    docker-compose -f "$COMPOSE_FILE" ps
+    docker compose -f "$COMPOSE_FILE" ps
     
     echo
     echo "Health Checks:"
@@ -1410,10 +1422,10 @@ show_logs() {
     
     if [ -n "$service" ]; then
         log "Showing logs for service: $service"
-        docker-compose -f "$COMPOSE_FILE" logs -f --tail=100 "$service"
+        docker compose -f "$COMPOSE_FILE" logs -f --tail=100 "$service"
     else
         log "Showing logs for all services"
-        docker-compose -f "$COMPOSE_FILE" logs -f --tail=100
+        docker compose -f "$COMPOSE_FILE" logs -f --tail=100
     fi
 }
 
@@ -1427,10 +1439,10 @@ restart_services() {
     
     if [ -n "$service" ]; then
         log "Restarting service: $service"
-        docker-compose -f "$COMPOSE_FILE" restart "$service"
+        docker compose -f "$COMPOSE_FILE" restart "$service"
     else
         log "Restarting all services"
-        docker-compose -f "$COMPOSE_FILE" restart
+        docker compose -f "$COMPOSE_FILE" restart
     fi
     
     log "Restart complete ✓"
@@ -1443,7 +1455,7 @@ stop_services() {
     fi
     
     log "Stopping all services..."
-    docker-compose -f "$COMPOSE_FILE" down
+    docker compose -f "$COMPOSE_FILE" down
     log "All services stopped ✓"
 }
 
@@ -1454,7 +1466,7 @@ start_services() {
     fi
     
     log "Starting all services..."
-    docker-compose -f "$COMPOSE_FILE" up -d
+    docker compose -f "$COMPOSE_FILE" up -d
     log "All services started ✓"
 }
 
