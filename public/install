@@ -11,7 +11,7 @@ BASH_SOURCE_PATH="${BASH_SOURCE[0]}"
 if [[ "$BASH_SOURCE_PATH" =~ ^/dev/fd/ ]] || [[ "$BASH_SOURCE_PATH" =~ ^/proc/self/fd/ ]] || [[ ! -f "$BASH_SOURCE_PATH" ]]; then
     # Remote execution detected - using current working directory
     SCRIPT_DIR="$(pwd)"
-    echo "[INFO] Script running from pipe - using current directory: $SCRIPT_DIR"
+    echo "→ Running from remote installer"
 else
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
@@ -30,8 +30,8 @@ show_banner() {
     local reset="\033[0m"    # Reset color
     
     echo
-    echo -e "         ${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
-    echo "     [•ᴗ•] TofuPilot Self-Hosting Installer"
+    echo -e "    ${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
+    echo " [•ᴗ•] TofuPilot Self-Hosting Installer"
     echo
 }
 
