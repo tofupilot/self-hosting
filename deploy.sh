@@ -527,132 +527,115 @@ collect_config() {
     echo "Authentication Configuration (required - choose at least one):"
     info "TofuPilot requires at least one authentication method"
     
-    # Check existing configuration
-    existing_google=$(get_env_value "AUTH_GOOGLE_ID")
-    existing_microsoft=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")
-    existing_smtp=$(get_env_value "SMTP_HOST")
-    
-    # Initialize variables
-    AUTH_GOOGLE_ID=""
-    AUTH_GOOGLE_SECRET=""
-    AUTH_MICROSOFT_ENTRA_ID_ID=""
-    AUTH_MICROSOFT_ENTRA_ID_SECRET=""
-    AUTH_MICROSOFT_ENTRA_ID_ISSUER=""
-    
-    # Google OAuth
-    printf "Configure Google OAuth? (y/N): " >&2
-    read -r configure_google
-    if [[ "$configure_google" =~ ^[Yy]$ ]]; then
-        AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID" false)
+    # Initialize variables with existing values as defaults
+    AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID (leave empty to skip)" false)
+    if [ -n "$AUTH_GOOGLE_ID" ]; then
         AUTH_GOOGLE_SECRET=$(prompt_env "AUTH_GOOGLE_SECRET" "Google OAuth Client Secret" true)
-    elif [ -n "$existing_google" ]; then
-        printf "Keep existing Google OAuth configuration? (Y/n): " >&2
-        read -r keep_google
-        if [[ ! "$keep_google" =~ ^[Nn]$ ]]; then
-            AUTH_GOOGLE_ID="$existing_google"
-            AUTH_GOOGLE_SECRET=$(get_env_value "AUTH_GOOGLE_SECRET")
-            log "Keeping existing Google OAuth configuration"
-        fi
+    else
+        AUTH_GOOGLE_SECRET=""
     fi
     
-    # Microsoft Entra ID (formerly Azure AD)
-    printf "Configure Microsoft Entra ID? (y/N): " >&2
-    read -r configure_microsoft
-    if [[ "$configure_microsoft" =~ ^[Yy]$ ]]; then
-        AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID" false)
+    AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID (leave empty to skip)" false)
+    if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
         AUTH_MICROSOFT_ENTRA_ID_SECRET=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_SECRET" "Microsoft Entra ID Client Secret" true)
         AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ISSUER" "Microsoft Entra ID Issuer URL" false)
-    elif [ -n "$existing_microsoft" ]; then
-        printf "Keep existing Microsoft Entra ID configuration? (Y/n): " >&2
-        read -r keep_microsoft
-        if [[ ! "$keep_microsoft" =~ ^[Nn]$ ]]; then
-            AUTH_MICROSOFT_ENTRA_ID_ID="$existing_microsoft"
-            AUTH_MICROSOFT_ENTRA_ID_SECRET=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_SECRET")
-            AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ISSUER")
-            log "Keeping existing Microsoft Entra ID configuration"
-        fi
-    fi
-    
-    # Check if at least one auth method is configured (including existing SMTP)
-    if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$existing_smtp" ]; then
-        warn "No authentication method configured!"
-        echo "TofuPilot requires at least one authentication method:"
-        echo "1. Google OAuth"
-        echo "2. Microsoft Entra ID"
-        echo "3. Email/SMTP (configured in next step)"
-        echo
-        info "You can configure OAuth now or skip to configure SMTP email in the next step"
-        echo
-        
-        # Allow skipping to SMTP configuration
-        while [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; do
-            printf "Configure Google OAuth now? (y/N): " >&2
-            read -r force_google
-            if [[ "$force_google" =~ ^[Yy]$ ]]; then
-                AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID" false)
-                AUTH_GOOGLE_SECRET=$(prompt_env "AUTH_GOOGLE_SECRET" "Google OAuth Client Secret" true)
-                break
-            fi
-            
-            printf "Configure Microsoft Entra ID now? (y/N): " >&2
-            read -r force_microsoft
-            if [[ "$force_microsoft" =~ ^[Yy]$ ]]; then
-                AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID" false)
-                AUTH_MICROSOFT_ENTRA_ID_SECRET=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_SECRET" "Microsoft Entra ID Client Secret" true)
-                AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ISSUER" "Microsoft Entra ID Issuer URL" false)
-                break
-            fi
-            
-            printf "Skip OAuth and configure SMTP email instead? (y/N): " >&2
-            read -r skip_oauth
-            if [[ "$skip_oauth" =~ ^[Yy]$ ]]; then
-                info "Skipping OAuth - you must configure SMTP email in the next step"
-                break
-            fi
-            
-            warn "You must configure at least one authentication method to continue"
-        done
+    else
+        AUTH_MICROSOFT_ENTRA_ID_SECRET=""
+        AUTH_MICROSOFT_ENTRA_ID_ISSUER=""
     fi
     
     echo
-    echo "Email Configuration (optional - but required if no OAuth configured):"
+    echo "Email Configuration:"
     
     # Check if SMTP is required (no OAuth methods configured)
     local smtp_required=false
     if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
         smtp_required=true
-        warn "SMTP email is REQUIRED since no OAuth methods are configured"
+        info "SMTP email is REQUIRED since no OAuth methods are configured"
+    else
+        info "SMTP email is optional (OAuth is configured)"
+    fi
+    
+    # Smart default for email from address
+    local email_default="tofupilot@${DOMAIN_NAME}"
+    local existing_email_from=$(get_env_value "EMAIL_FROM_AUTH")
+    # Fallback to legacy EMAIL_FROM for backward compatibility
+    if [ -z "$existing_email_from" ]; then
+        existing_email_from=$(get_env_value "EMAIL_FROM")
+    fi
+    if [ -n "$existing_email_from" ]; then
+        email_default="$existing_email_from"
     fi
     
     if [ "$smtp_required" = "true" ]; then
-        printf "Configure SMTP email (required)? (Y/n): " >&2
-    else
-        printf "Configure SMTP email? (y/N): " >&2
-    fi
-    
-    read -r configure_smtp
-    
-    if [[ "$configure_smtp" =~ ^[Yy]$ ]] || ([[ ! "$configure_smtp" =~ ^[Nn]$ ]] && [ "$smtp_required" = "true" ]); then
-        SMTP_HOST=$(prompt_env "SMTP_HOST" "SMTP server hostname" false)
-        SMTP_PORT=$(prompt_env "SMTP_PORT" "SMTP port" false)
-        if [ -z "$SMTP_PORT" ]; then SMTP_PORT="587"; fi
+        EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname" false)
+        # Fallback to legacy SMTP_HOST for backward compatibility
+        if [ -z "$EMAIL_SMTP_HOST" ]; then
+            EMAIL_SMTP_HOST=$(get_env_value "SMTP_HOST")
+        fi
+        if [ -z "$EMAIL_SMTP_HOST" ]; then
+            error "SMTP server hostname is required when no OAuth methods are configured"
+        fi
         
-        SMTP_USER=$(prompt_env "SMTP_USER" "SMTP username" false)
-        SMTP_PASSWORD=$(prompt_env "SMTP_PASSWORD" "SMTP password" true)
-        EMAIL_FROM=$(prompt_env "EMAIL_FROM" "From email address" false)
-        if [ -z "$EMAIL_FROM" ]; then EMAIL_FROM="$ACME_EMAIL"; fi
-    elif [ "$smtp_required" = "true" ]; then
-        error "SMTP email configuration is required when no OAuth methods are configured"
+        EMAIL_SMTP_PORT=$(prompt_env_with_default "EMAIL_SMTP_PORT" "SMTP port" "587" false)
+        # Fallback to legacy SMTP_PORT for backward compatibility
+        if [ -z "$EMAIL_SMTP_PORT" ]; then
+            EMAIL_SMTP_PORT=$(get_env_value "SMTP_PORT")
+        fi
+        if [ -z "$EMAIL_SMTP_PORT" ]; then
+            EMAIL_SMTP_PORT="587"
+        fi
+        
+        EMAIL_SMTP_USER=$(prompt_env "EMAIL_SMTP_USER" "SMTP username" false)
+        # Fallback to legacy SMTP_USER for backward compatibility
+        if [ -z "$EMAIL_SMTP_USER" ]; then
+            EMAIL_SMTP_USER=$(get_env_value "SMTP_USER")
+        fi
+        
+        EMAIL_SMTP_PASSWORD=$(prompt_env "EMAIL_SMTP_PASSWORD" "SMTP password" true)
+        # Fallback to legacy SMTP_PASSWORD for backward compatibility
+        if [ -z "$EMAIL_SMTP_PASSWORD" ]; then
+            EMAIL_SMTP_PASSWORD=$(get_env_value "SMTP_PASSWORD")
+        fi
+        EMAIL_FROM_AUTH=$(prompt_env_with_default "EMAIL_FROM_AUTH" "From email address" "$email_default" false)
     else
-        SMTP_HOST=""
-        SMTP_PORT="587"
-        SMTP_USER=""
-        SMTP_PASSWORD=""
-        EMAIL_FROM=""
+        EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname (leave empty to skip)" false)
+        # Fallback to legacy SMTP_HOST for backward compatibility
+        if [ -z "$EMAIL_SMTP_HOST" ]; then
+            EMAIL_SMTP_HOST=$(get_env_value "SMTP_HOST")
+        fi
+        if [ -n "$EMAIL_SMTP_HOST" ]; then
+            EMAIL_SMTP_PORT=$(prompt_env_with_default "EMAIL_SMTP_PORT" "SMTP port" "587" false)
+            # Fallback to legacy SMTP_PORT for backward compatibility
+            if [ -z "$EMAIL_SMTP_PORT" ]; then
+                EMAIL_SMTP_PORT=$(get_env_value "SMTP_PORT")
+            fi
+            if [ -z "$EMAIL_SMTP_PORT" ]; then
+                EMAIL_SMTP_PORT="587"
+            fi
+            
+            EMAIL_SMTP_USER=$(prompt_env "EMAIL_SMTP_USER" "SMTP username" false)
+            # Fallback to legacy SMTP_USER for backward compatibility
+            if [ -z "$EMAIL_SMTP_USER" ]; then
+                EMAIL_SMTP_USER=$(get_env_value "SMTP_USER")
+            fi
+            
+            EMAIL_SMTP_PASSWORD=$(prompt_env "EMAIL_SMTP_PASSWORD" "SMTP password" true)
+            # Fallback to legacy SMTP_PASSWORD for backward compatibility
+            if [ -z "$EMAIL_SMTP_PASSWORD" ]; then
+                EMAIL_SMTP_PASSWORD=$(get_env_value "SMTP_PASSWORD")
+            fi
+            EMAIL_FROM_AUTH=$(prompt_env_with_default "EMAIL_FROM_AUTH" "From email address" "$email_default" false)
+        else
+            EMAIL_SMTP_PORT="587"
+            EMAIL_SMTP_USER=""
+            EMAIL_SMTP_PASSWORD=""
+            EMAIL_FROM_AUTH=""
+        fi
     fi
     
     # Final validation
-    if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$SMTP_HOST" ]; then
+    if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$EMAIL_SMTP_HOST" ]; then
         error "At least one authentication method must be configured (Google OAuth, Microsoft Entra ID, or SMTP email)"
     fi
     
@@ -812,8 +795,8 @@ show_info() {
     if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
         echo "  Microsoft Entra ID: Add https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id as redirect URI"
     fi
-    if [ -n "$SMTP_HOST" ]; then
-        echo "  Email auth: Configured with ${SMTP_HOST}"
+    if [ -n "$EMAIL_SMTP_HOST" ]; then
+        echo "  Email auth: Configured with ${EMAIL_SMTP_HOST}"
     fi
     echo
 }
