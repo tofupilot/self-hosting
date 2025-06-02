@@ -349,7 +349,7 @@ services:
       - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
       - GEL_SERVER_SECURITY=insecure_dev_mode
     volumes:
-      - database-data:/var/lib/edgedb/data
+      - database-data:/var/lib/gel/data
     ports:
       - "127.0.0.1:5656:5656"
 
