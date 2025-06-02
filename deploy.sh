@@ -921,6 +921,73 @@ start_services() {
     log "All services started"
 }
 
+# Uninstall TofuPilot completely
+uninstall_tofupilot() {
+    echo
+    echo "=========================================="
+    error "TofuPilot Complete Uninstall"
+    echo "=========================================="
+    echo
+    warn "This will completely remove:"
+    echo "- All TofuPilot containers"
+    echo "- All TofuPilot volumes (database data will be lost)"
+    echo "- Configuration files (.env, docker-compose.yml)"
+    echo "- Docker images and unused volumes"
+    echo
+    
+    printf "${RED}Are you sure you want to completely uninstall TofuPilot? (y/N): ${NC}"
+    read -r confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        echo "Uninstall cancelled."
+        exit 0
+    fi
+    
+    echo
+    printf "${RED}This action is IRREVERSIBLE. Type 'DELETE' to confirm: ${NC}"
+    read -r final_confirm
+    if [ "$final_confirm" != "DELETE" ]; then
+        echo "Uninstall cancelled."
+        exit 0
+    fi
+    
+    echo
+    info "Step 1: Stopping all TofuPilot services..."
+    if [ -f "$COMPOSE_FILE" ]; then
+        docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || docker-compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
+        log "Services stopped"
+    else
+        warn "No docker-compose.yml found"
+    fi
+    
+    info "Step 2: Removing TofuPilot containers..."
+    docker ps -a --filter "name=tofupilot" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
+    log "Containers removed"
+    
+    info "Step 3: Removing TofuPilot volumes..."
+    docker volume ls --filter "name=tofupilot" --format "{{.Name}}" | xargs -r docker volume rm 2>/dev/null || true
+    docker volume ls --filter "name=root" --format "{{.Name}}" | grep -E "(database-data|storage-data|traefik-acme)" | xargs -r docker volume rm 2>/dev/null || true
+    log "Volumes removed"
+    
+    info "Step 4: Removing configuration files..."
+    rm -f "$ENV_FILE" "$COMPOSE_FILE" "${ENV_FILE}.backup."* 2>/dev/null || true
+    log "Configuration files removed"
+    
+    info "Step 5: Cleaning up Docker system..."
+    docker system prune -f --volumes 2>/dev/null || true
+    log "Docker system cleaned"
+    
+    info "Step 6: Removing TofuPilot images..."
+    docker images --filter "reference=ghcr.io/tofupilot/*" --format "{{.Repository}}:{{.Tag}}" | xargs -r docker rmi 2>/dev/null || true
+    log "Images removed"
+    
+    echo
+    log "🎉 TofuPilot completely uninstalled!"
+    echo
+    echo "To reinstall TofuPilot, run:"
+    echo "  $0"
+    echo
+}
+
 # Show usage
 usage() {
     echo "TofuPilot Deployment Script"
@@ -940,6 +1007,7 @@ usage() {
     echo "  --start                 Start all services"
     echo "  --stop                  Stop all services"
     echo
+    echo "  --uninstall             Completely remove TofuPilot (with confirmation)"
     echo "  --help                  Show this help message"
     echo
     echo "Examples:"
@@ -950,6 +1018,7 @@ usage() {
     echo ""
     echo "  $0 --status             # Check deployment status"
     echo "  $0 --logs app           # Show application logs"
+    echo "  $0 --uninstall          # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
@@ -997,6 +1066,10 @@ case "${1:-}" in
         ;;
     --start)
         start_services
+        exit 0
+        ;;
+    --uninstall)
+        uninstall_tofupilot
         exit 0
         ;;
     --help)
