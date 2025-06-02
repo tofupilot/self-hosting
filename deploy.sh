@@ -263,9 +263,9 @@ create_compose_file() {
 
 services:
   # Reverse proxy with automatic SSL
-  traefik:
+  tofupilot-proxy:
     image: traefik:v3.0
-    container_name: tofupilot-traefik
+    container_name: tofupilot-proxy
     restart: unless-stopped
     command:
       - "--api.dashboard=false"
@@ -283,18 +283,18 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-acme:/data
+      - tofupilot-proxy-acme:/data
     environment:
       - ACME_EMAIL=${ACME_EMAIL}
 
   # TofuPilot Application
-  app:
+  tofupilot-app:
     image: ghcr.io/tofupilot/tofupilot:latest
     container_name: tofupilot-app
     restart: unless-stopped
     depends_on:
-      - database
-      - storage
+      - tofupilot-database
+      - tofupilot-storage
     environment:
       # Domain Configuration
       - NEXT_PUBLIC_DOMAIN_NAME=${DOMAIN_NAME}
@@ -320,7 +320,7 @@ services:
       - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
       - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
       - S3_ENDPOINT_URL_EXTERNAL=https://${STORAGE_DOMAIN_NAME}
-      - S3_ENDPOINT_URL_INTERNAL=http://storage:9000
+      - S3_ENDPOINT_URL_INTERNAL=http://tofupilot-storage:9000
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - S3_REGION=${S3_REGION}
       
@@ -330,15 +330,17 @@ services:
       - EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
       - EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
       - EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
+    volumes:
+      - tofupilot-app-cache:/app/.next/cache
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}`)"
-      - "traefik.http.routers.app.entrypoints=websecure"
-      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
-      - "traefik.http.services.app.loadbalancer.server.port=3000"
+      - "traefik.http.routers.tofupilot-app.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.tofupilot-app.entrypoints=websecure"
+      - "traefik.http.routers.tofupilot-app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
 
   # Database
-  database:
+  tofupilot-database:
     image: edgedb/edgedb:latest
     container_name: tofupilot-database
     restart: unless-stopped
@@ -349,12 +351,12 @@ services:
       - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
       - GEL_SERVER_SECURITY=insecure_dev_mode
     volumes:
-      - database-data:/var/lib/gel/data
+      - tofupilot-database-data:/var/lib/gel/data
     ports:
       - "127.0.0.1:5656:5656"
 
   # Object Storage (MinIO)
-  storage:
+  tofupilot-storage:
     image: minio/minio:latest
     container_name: tofupilot-storage
     restart: unless-stopped
@@ -363,18 +365,19 @@ services:
       - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID}
       - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY}
     volumes:
-      - storage-data:/data
+      - tofupilot-storage-data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
-      - "traefik.http.routers.storage.entrypoints=websecure"
-      - "traefik.http.routers.storage.tls.certresolver=letsencrypt"
-      - "traefik.http.services.storage.loadbalancer.server.port=9000"
+      - "traefik.http.routers.tofupilot-storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
+      - "traefik.http.routers.tofupilot-storage.entrypoints=websecure"
+      - "traefik.http.routers.tofupilot-storage.tls.certresolver=letsencrypt"
+      - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
 
 volumes:
-  database-data:
-  storage-data:
-  traefik-acme:
+  tofupilot-database-data:
+  tofupilot-storage-data:
+  tofupilot-proxy-acme:
+  tofupilot-app-cache:
 EOF
 
   log "Docker Compose file created"
@@ -820,7 +823,7 @@ show_status() {
     docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep tofupilot
     
     info "Data Volumes:"
-    local volumes=$(docker system df -v 2>/dev/null | grep -E "(root_database-data|root_storage-data|root_traefik-acme)" | awk '{print $1 " " $3}')
+    local volumes=$(docker system df -v 2>/dev/null | grep -E "(root_tofupilot-database-data|root_tofupilot-storage-data|root_tofupilot-proxy-acme|root_tofupilot-app-cache)" | awk '{print $1 " " $3}')
     if [ -n "$volumes" ]; then
         echo "$volumes" | while read name size; do
             echo "  $name: $size"
@@ -965,7 +968,7 @@ uninstall_tofupilot() {
     
     info "Step 3: Removing TofuPilot volumes..."
     docker volume ls --filter "name=tofupilot" --format "{{.Name}}" | xargs -r docker volume rm 2>/dev/null || true
-    docker volume ls --filter "name=root" --format "{{.Name}}" | grep -E "(database-data|storage-data|traefik-acme)" | xargs -r docker volume rm 2>/dev/null || true
+    docker volume ls --filter "name=root" --format "{{.Name}}" | grep -E "(tofupilot-database-data|tofupilot-storage-data|tofupilot-proxy-acme|tofupilot-app-cache)" | xargs -r docker volume rm 2>/dev/null || true
     log "Volumes removed"
     
     info "Step 4: Removing configuration files..."
