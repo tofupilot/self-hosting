@@ -250,128 +250,15 @@ check_requirements() {
     fi
 }
 
-# Create Docker Compose file with fixed labels
+# Create Docker Compose file (for curl deployments)
 create_compose_file() {
   log "Creating Docker Compose configuration..."
 
-  # Determine if we're in local mode
-  local IS_LOCAL_MODE="false"
-  if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
-    IS_LOCAL_MODE="true"
-  fi
+  cat > "$COMPOSE_FILE" <<'EOF'
+version: '3.8'
 
-  if [[ "$IS_LOCAL_MODE" == "true" ]]; then
-    # Local mode without SSL
-    cat > "$COMPOSE_FILE" <<'EOF'
 services:
-  traefik:
-    image: traefik:v3.0
-    container_name: tofupilot-traefik
-    restart: unless-stopped
-    command:
-      - "--api.dashboard=false"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-    ports:
-      - "80:80"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./acme.json:/acme.json
-    networks:
-      - web
-
-  app:
-    image: ghcr.io/tofupilot/tofupilot:latest
-    platform: linux/amd64
-    container_name: tofupilot-app
-    ports:
-      - "3000:3000"
-    restart: unless-stopped
-    depends_on:
-      - database
-      - storage
-    environment:
-      - NEXT_PUBLIC_DOMAIN_NAME=${DOMAIN_NAME}
-      - NEXTAUTH_URL=http://${DOMAIN_NAME}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
-      - EDGEDB_CLIENT_TLS_SECURITY=insecure
-      - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
-      - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
-      - STORAGE_EXTERNAL_ENDPOINT_URL=http://${STORAGE_DOMAIN_NAME}
-      - STORAGE_INTERNAL_ENDPOINT_URL=http://storage:9000
-      - BUCKET_NAME=tofupilot
-      - REGION=us-east-1
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
-      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
-      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
-      - SMTP_HOST=${SMTP_HOST:-}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER:-}
-      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
-      - EMAIL_FROM=${EMAIL_FROM:-}
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.app.rule=Host(`${DOMAIN_NAME}`)"
-      - "traefik.http.routers.app.entrypoints=web"
-      - "traefik.http.services.app.loadbalancer.server.port=3000"
-    networks:
-      - web
-
-  database:
-    image: geldata/gel:latest
-    container_name: tofupilot-database
-    restart: unless-stopped
-    environment:
-      - GEL_SERVER_PASSWORD=${EDGEDB_PASSWORD}
-      - GEL_SERVER_SECURITY=insecure_dev_mode
-      - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
-      - GEL_SERVER_UNENCRYPTED_HTTP=true
-      - GEL_SERVER_TLS_MODE=disabled
-    volumes:
-      - database-data:/var/lib/edgedb/data
-    ports:
-      - "127.0.0.1:5656:5656"
-    networks:
-      - web
-
-  storage:
-    image: minio/minio:latest
-    container_name: tofupilot-storage
-    restart: unless-stopped
-    command: server /data --console-address ":9001"
-    environment:
-      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
-      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
-    volumes:
-      - storage-data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
-      - "traefik.http.routers.storage.entrypoints=web"
-      - "traefik.http.services.storage.loadbalancer.server.port=9000"
-    networks:
-      - web
-
-volumes:
-  database-data:
-  storage-data:
-
-networks:
-  web:
-    driver: bridge
-
-EOF
-  else
-    # Production mode with SSL
-    cat > "$COMPOSE_FILE" <<'EOF'
-services:
+  # Reverse proxy with automatic SSL
   traefik:
     image: traefik:v3.0
     container_name: tofupilot-traefik
@@ -384,7 +271,7 @@ services:
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/acme/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
     ports:
@@ -392,39 +279,44 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - traefik-acme:/acme
+      - traefik-acme:/acme.json
     environment:
       - ACME_EMAIL=${ACME_EMAIL}
-    networks:
-      - web
 
+  # TofuPilot Application
   app:
     image: ghcr.io/tofupilot/tofupilot:latest
-    platform: linux/amd64
     container_name: tofupilot-app
-    ports:
-      - "3000:3000"
     restart: unless-stopped
     depends_on:
       - database
       - storage
     environment:
+      # Domain Configuration
       - NEXT_PUBLIC_DOMAIN_NAME=${DOMAIN_NAME}
-      - NEXTAUTH_URL=https://${DOMAIN_NAME}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - EDGEDB_DSN=edgedb://edgedb:${EDGEDB_PASSWORD}@database:5656/edgedb
-      - EDGEDB_CLIENT_TLS_SECURITY=insecure
+      
+      # Authentication Configuration
+      - AUTH_SECRET=${AUTH_SECRET}
+      - AUTH_URL=https://${DOMAIN_NAME}
+      - AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID:-}
+      - AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET:-}
+      - AUTH_MICROSOFT_ENTRA_ID_ID=${AUTH_MICROSOFT_ENTRA_ID_ID:-}
+      - AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
+      - AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
+      
+      # Database Configuration
+      - GEL_DSN=gel://edgedb:${GEL_PASSWORD}@database:5656/edgedb
+      - GEL_CLIENT_TLS_SECURITY=insecure
+      
+      # Storage Configuration
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
       - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
       - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
       - STORAGE_INTERNAL_ENDPOINT_URL=http://storage:9000
       - BUCKET_NAME=tofupilot
       - REGION=us-east-1
-      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-      - AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
-      - AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
-      - AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
+      
+      # Email Configuration
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-}
@@ -436,24 +328,23 @@ services:
       - "traefik.http.routers.app.entrypoints=websecure"
       - "traefik.http.routers.app.tls.certresolver=letsencrypt"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
-    networks:
-      - web
 
+  # Database
   database:
     image: geldata/gel:latest
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - GEL_SERVER_PASSWORD=${EDGEDB_PASSWORD}
+      - GEL_SERVER_PASSWORD=${GEL_PASSWORD}
       - GEL_SERVER_SECURITY=insecure_dev_mode
-      - GEL_SERVER_TLS_MODE=disabled
+      - GEL_SERVER_HTTP_ENDPOINT_SECURITY=optional
+      - GEL_SERVER_BINARY_ENDPOINT_SECURITY=optional
     volumes:
-      - database-data:/var/lib/edgedb/data
+      - database-data:/var/lib/gel/data
     ports:
       - "127.0.0.1:5656:5656"
-    networks:
-      - web
 
+  # Object Storage (MinIO)
   storage:
     image: minio/minio:latest
     container_name: tofupilot-storage
@@ -470,26 +361,12 @@ services:
       - "traefik.http.routers.storage.entrypoints=websecure"
       - "traefik.http.routers.storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.storage.loadbalancer.server.port=9000"
-    networks:
-      - web
 
 volumes:
   database-data:
   storage-data:
   traefik-acme:
-
-networks:
-  web:
-    driver: bridge
 EOF
-  fi
-
-  # Initialize ACME volume with correct permissions
-  if [[ "$IS_LOCAL_MODE" == "false" ]]; then
-    log "Setting up SSL certificate storage..."
-    docker volume create traefik-acme 2>/dev/null || true
-    docker run --rm -v traefik-acme:/acme alpine sh -c "touch /acme/acme.json && chmod 600 /acme/acme.json" 2>/dev/null || true
-  fi
 
   log "Docker Compose file created"
 }
@@ -504,23 +381,27 @@ create_env_file() {
     fi
     
     cat > "$ENV_FILE" <<EOF
-# TofuPilot Configuration
+# Domain Configuration
 DOMAIN_NAME=${DOMAIN_NAME}
 STORAGE_DOMAIN_NAME=${STORAGE_DOMAIN_NAME}
 ACME_EMAIL=${ACME_EMAIL}
 
-# Security
-NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-EDGEDB_PASSWORD=${EDGEDB_PASSWORD}
+# Authentication Configuration
+AUTH_SECRET=${AUTH_SECRET}
+AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID:-}
+AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET:-}
+AUTH_MICROSOFT_ENTRA_ID_ID=${AUTH_MICROSOFT_ENTRA_ID_ID:-}
+AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
+AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
+
+# Database Configuration
+GEL_PASSWORD=${GEL_PASSWORD}
+GEL_DSN=gel://edgedb:${GEL_PASSWORD}@database:5656/edgedb
+GEL_CLIENT_TLS_SECURITY=insecure
+
+# Storage Configuration
 MINIO_ACCESS_KEY=tofupilot
 MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-
-# Authentication
-GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
-GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
-AZURE_AD_CLIENT_ID=${AZURE_AD_CLIENT_ID:-}
-AZURE_AD_CLIENT_SECRET=${AZURE_AD_CLIENT_SECRET:-}
-AZURE_AD_TENANT_ID=${AZURE_AD_TENANT_ID:-}
 
 # Email Configuration
 SMTP_HOST=${SMTP_HOST:-}
@@ -586,17 +467,17 @@ collect_config() {
     info "Generating secure passwords automatically..."
     
     # Auto-generate security variables, only use existing if they exist
-    NEXTAUTH_SECRET=$(get_env_value "NEXTAUTH_SECRET")
-    if [ -z "$NEXTAUTH_SECRET" ]; then 
-        NEXTAUTH_SECRET=$(generate_password)
-        log "Generated NextAuth secret"
+    AUTH_SECRET=$(get_env_value "AUTH_SECRET")
+    if [ -z "$AUTH_SECRET" ]; then 
+        AUTH_SECRET=$(generate_password)
+        log "Generated Auth secret"
     else
-        log "Using existing NextAuth secret"
+        log "Using existing Auth secret"
     fi
     
-    EDGEDB_PASSWORD=$(get_env_value "EDGEDB_PASSWORD")
-    if [ -z "$EDGEDB_PASSWORD" ]; then 
-        EDGEDB_PASSWORD=$(generate_password)
+    GEL_PASSWORD=$(get_env_value "GEL_PASSWORD")
+    if [ -z "$GEL_PASSWORD" ]; then 
+        GEL_PASSWORD=$(generate_password)
         log "Generated database password"
     else
         log "Using existing database password"
@@ -615,78 +496,78 @@ collect_config() {
     info "TofuPilot requires at least one authentication method"
     
     # Check existing configuration
-    existing_google=$(get_env_value "GOOGLE_CLIENT_ID")
-    existing_azure=$(get_env_value "AZURE_AD_CLIENT_ID")
+    existing_google=$(get_env_value "AUTH_GOOGLE_ID")
+    existing_microsoft=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")
     existing_smtp=$(get_env_value "SMTP_HOST")
     
     # Initialize variables
-    GOOGLE_CLIENT_ID=""
-    GOOGLE_CLIENT_SECRET=""
-    AZURE_AD_CLIENT_ID=""
-    AZURE_AD_CLIENT_SECRET=""
-    AZURE_AD_TENANT_ID=""
+    AUTH_GOOGLE_ID=""
+    AUTH_GOOGLE_SECRET=""
+    AUTH_MICROSOFT_ENTRA_ID_ID=""
+    AUTH_MICROSOFT_ENTRA_ID_SECRET=""
+    AUTH_MICROSOFT_ENTRA_ID_ISSUER=""
     
     # Google OAuth
     printf "Configure Google OAuth? (y/N): " >&2
     read -r configure_google
     if [[ "$configure_google" =~ ^[Yy]$ ]]; then
-        GOOGLE_CLIENT_ID=$(prompt_env "GOOGLE_CLIENT_ID" "Google OAuth Client ID" false)
-        GOOGLE_CLIENT_SECRET=$(prompt_env "GOOGLE_CLIENT_SECRET" "Google OAuth Client Secret" true)
+        AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID" false)
+        AUTH_GOOGLE_SECRET=$(prompt_env "AUTH_GOOGLE_SECRET" "Google OAuth Client Secret" true)
     elif [ -n "$existing_google" ]; then
         printf "Keep existing Google OAuth configuration? (Y/n): " >&2
         read -r keep_google
         if [[ ! "$keep_google" =~ ^[Nn]$ ]]; then
-            GOOGLE_CLIENT_ID="$existing_google"
-            GOOGLE_CLIENT_SECRET=$(get_env_value "GOOGLE_CLIENT_SECRET")
+            AUTH_GOOGLE_ID="$existing_google"
+            AUTH_GOOGLE_SECRET=$(get_env_value "AUTH_GOOGLE_SECRET")
             log "Keeping existing Google OAuth configuration"
         fi
     fi
     
-    # Azure AD
-    printf "Configure Azure AD? (y/N): " >&2
-    read -r configure_azure
-    if [[ "$configure_azure" =~ ^[Yy]$ ]]; then
-        AZURE_AD_CLIENT_ID=$(prompt_env "AZURE_AD_CLIENT_ID" "Azure AD Client ID" false)
-        AZURE_AD_CLIENT_SECRET=$(prompt_env "AZURE_AD_CLIENT_SECRET" "Azure AD Client Secret" true)
-        AZURE_AD_TENANT_ID=$(prompt_env "AZURE_AD_TENANT_ID" "Azure AD Tenant ID" false)
-    elif [ -n "$existing_azure" ]; then
-        printf "Keep existing Azure AD configuration? (Y/n): " >&2
-        read -r keep_azure
-        if [[ ! "$keep_azure" =~ ^[Nn]$ ]]; then
-            AZURE_AD_CLIENT_ID="$existing_azure"
-            AZURE_AD_CLIENT_SECRET=$(get_env_value "AZURE_AD_CLIENT_SECRET")
-            AZURE_AD_TENANT_ID=$(get_env_value "AZURE_AD_TENANT_ID")
-            log "Keeping existing Azure AD configuration"
+    # Microsoft Entra ID (formerly Azure AD)
+    printf "Configure Microsoft Entra ID? (y/N): " >&2
+    read -r configure_microsoft
+    if [[ "$configure_microsoft" =~ ^[Yy]$ ]]; then
+        AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID" false)
+        AUTH_MICROSOFT_ENTRA_ID_SECRET=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_SECRET" "Microsoft Entra ID Client Secret" true)
+        AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ISSUER" "Microsoft Entra ID Issuer URL" false)
+    elif [ -n "$existing_microsoft" ]; then
+        printf "Keep existing Microsoft Entra ID configuration? (Y/n): " >&2
+        read -r keep_microsoft
+        if [[ ! "$keep_microsoft" =~ ^[Nn]$ ]]; then
+            AUTH_MICROSOFT_ENTRA_ID_ID="$existing_microsoft"
+            AUTH_MICROSOFT_ENTRA_ID_SECRET=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_SECRET")
+            AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ISSUER")
+            log "Keeping existing Microsoft Entra ID configuration"
         fi
     fi
     
     # Check if at least one auth method is configured
-    if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ] && [ -z "$existing_smtp" ]; then
+    if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$existing_smtp" ]; then
         warn "No authentication method configured!"
         echo "TofuPilot requires at least one authentication method:"
         echo "1. Google OAuth"
-        echo "2. Azure AD"
+        echo "2. Microsoft Entra ID"
         echo "3. Email/SMTP (configured in next step)"
         echo
-        warn "You must configure at least Google OAuth or Azure AD now, or SMTP email in the next step"
+        warn "You must configure at least Google OAuth or Microsoft Entra ID now, or SMTP email in the next step"
         echo
         
         # Force at least one configuration
-        while [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ]; do
+        while [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; do
             printf "Configure Google OAuth now? (y/N): " >&2
             read -r force_google
             if [[ "$force_google" =~ ^[Yy]$ ]]; then
-                GOOGLE_CLIENT_ID=$(prompt_env "GOOGLE_CLIENT_ID" "Google OAuth Client ID" false)
-                GOOGLE_CLIENT_SECRET=$(prompt_env "GOOGLE_CLIENT_SECRET" "Google OAuth Client Secret" true)
+                AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID" false)
+                AUTH_GOOGLE_SECRET=$(prompt_env "AUTH_GOOGLE_SECRET" "Google OAuth Client Secret" true)
                 break
             fi
             
-            printf "Configure Azure AD now? (y/N): " >&2
-            read -r force_azure
-            if [[ "$force_azure" =~ ^[Yy]$ ]]; then
-                AZURE_AD_CLIENT_ID=$(prompt_env "AZURE_AD_CLIENT_ID" "Azure AD Client ID" false)
-                AZURE_AD_CLIENT_SECRET=$(prompt_env "AZURE_AD_CLIENT_SECRET" "Azure AD Client Secret" true)
-                AZURE_AD_TENANT_ID=$(prompt_env "AZURE_AD_TENANT_ID" "Azure AD Tenant ID" false)
+            printf "Configure Microsoft Entra ID now? (y/N): " >&2
+            read -r force_microsoft
+            if [[ "$force_microsoft" =~ ^[Yy]$ ]]; then
+                AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID" false)
+                AUTH_MICROSOFT_ENTRA_ID_SECRET=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_SECRET" "Microsoft Entra ID Client Secret" true)
+                AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ISSUER" "Microsoft Entra ID Issuer URL" false)
                 break
             fi
             
@@ -699,7 +580,7 @@ collect_config() {
     
     # Check if SMTP is required (no OAuth methods configured)
     local smtp_required=false
-    if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ]; then
+    if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
         smtp_required=true
         warn "SMTP email is REQUIRED since no OAuth methods are configured"
     fi
@@ -732,8 +613,8 @@ collect_config() {
     fi
     
     # Final validation
-    if [ -z "$GOOGLE_CLIENT_ID" ] && [ -z "$AZURE_AD_CLIENT_ID" ] && [ -z "$SMTP_HOST" ]; then
-        error "At least one authentication method must be configured (Google OAuth, Azure AD, or SMTP email)"
+    if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$SMTP_HOST" ]; then
+        error "At least one authentication method must be configured (Google OAuth, Microsoft Entra ID, or SMTP email)"
     fi
     
     echo
@@ -759,22 +640,13 @@ deploy() {
     fi
     
     info "Starting services..."
-    docker compose -f "$COMPOSE_FILE" down --remove-orphans 2>/dev/null || true
-    docker container prune -f 2>/dev/null || true
+    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
     
-    if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
-        log "Services started"
-    else
-        info "Retrying with cleanup..."
-        docker compose -f "$COMPOSE_FILE" down --volumes --remove-orphans 2>/dev/null || true
-        docker system prune -f 2>/dev/null || true
-        
-        if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d --remove-orphans; then
-            log "Services started"
-        else
-            error "Service startup failed"
-        fi
+    if ! docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+        error "Docker containers failed to start. Check logs with: docker compose logs"
     fi
+    
+    log "Services started"
     
     info "Waiting for services to be ready..."
     
@@ -940,19 +812,11 @@ show_info() {
     echo "  Config:         $CONFIG_FILE"
     echo
     warn "Configure your authentication providers:"
-    if [ -n "$GOOGLE_CLIENT_ID" ]; then
-        if [ "$LOCAL_MODE" = "true" ]; then
-            echo "  Google OAuth: Add http://${DOMAIN_NAME}/api/auth/callback/google as redirect URI"
-        else
-            echo "  Google OAuth: Add https://${DOMAIN_NAME}/api/auth/callback/google as redirect URI"
-        fi
+    if [ -n "$AUTH_GOOGLE_ID" ]; then
+        echo "  Google OAuth: Add https://${DOMAIN_NAME}/api/auth/callback/google as redirect URI"
     fi
-    if [ -n "$AZURE_AD_CLIENT_ID" ]; then
-        if [ "$LOCAL_MODE" = "true" ]; then
-            echo "  Azure AD: Add http://${DOMAIN_NAME}/api/auth/callback/azure-ad as redirect URI"
-        else
-            echo "  Azure AD: Add https://${DOMAIN_NAME}/api/auth/callback/azure-ad as redirect URI"
-        fi
+    if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
+        echo "  Microsoft Entra ID: Add https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id as redirect URI"
     fi
     if [ -n "$SMTP_HOST" ]; then
         echo "  Email auth: Configured with ${SMTP_HOST}"
