@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Simple TofuPilot Deployment Script
-# This script sets up TofuPilot with minimal user input and smart defaults
+# TofuPilot Self-Hosting Deployment Script
+# Self-hosting deployment with automated configuration
 set -e  # Exit on any error
 
 #----------------------------#
 #       Configuration        #
 #----------------------------#
-# Handle case where script is run via curl pipe (BASH_SOURCE points to /dev/fd/XX or /proc/self/fd/XX)
+# Handle remote execution via curl pipe (process file descriptors /dev/fd/XX or /proc/self/fd/XX)
 BASH_SOURCE_PATH="${BASH_SOURCE[0]}"
 if [[ "$BASH_SOURCE_PATH" =~ ^/dev/fd/ ]] || [[ "$BASH_SOURCE_PATH" =~ ^/proc/self/fd/ ]] || [[ ! -f "$BASH_SOURCE_PATH" ]]; then
-    # Script is run via pipe or doesn't exist as a real file, use current directory
+    # Remote execution detected - using current working directory
     SCRIPT_DIR="$(pwd)"
     echo "[INFO] Script running from pipe - using current directory: $SCRIPT_DIR"
 else
@@ -19,10 +19,10 @@ fi
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
-# Colors for output
+# Terminal color definitions for enhanced output formatting
 RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
 
-# TofuPilot banner
+# Corporate branding display
 show_banner() {
     # Colors for the tofu art
     local yellow="\033[33m"  # Yellow for the plane
@@ -30,7 +30,7 @@ show_banner() {
     local reset="\033[0m"    # Reset color
     
     echo -e "${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
-    echo "[•ᴗ•] TofuPilot Self-Hosting Deploy.sh"
+    echo "[•ᴗ•] TofuPilot Self-Hosting Installer"
     echo
 }
 
@@ -51,7 +51,7 @@ step(){
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
-# Simple progress bar
+# Progress indicator for long-running operations
 progress_bar() {
     local current=$1
     local total=$2
@@ -65,7 +65,7 @@ progress_bar() {
     printf "] %d%%" $percentage
 }
 
-# Get existing value from env file
+# Environment variable retrieval utility
 get_env_value() {
     local var_name="$1"
     if [ -f "$ENV_FILE" ]; then
@@ -73,7 +73,7 @@ get_env_value() {
     fi
 }
 
-# Prompt with pre-filled values from env file
+# Interactive configuration prompt with default value handling
 prompt_env() {
     local var_name="$1"
     local message="$2"
@@ -110,7 +110,7 @@ prompt_env() {
     echo "$user_input"
 }
 
-# Prompt with custom default value
+# Interactive prompt with customizable default value
 prompt_env_with_default() {
     local var_name="$1"
     local message="$2"
@@ -140,11 +140,11 @@ prompt_env_with_default() {
     echo "$user_input"
 }
 
-# GitHub authentication and testing
+# GitHub Authentication and Registry Access Verification
 github_auth() {
     info "GitHub authentication required"
-    echo "Need GitHub Personal Access Token with 'read:packages' permission"
-    echo "Create at: https://github.com/settings/tokens"
+    echo "A GitHub Personal Access Token with 'read:packages' permission is required"
+    echo "Generate token at: https://github.com/settings/tokens"
     echo
     
     echo -n "GitHub Username: "
@@ -154,18 +154,18 @@ github_auth() {
     echo
     
     if [ -z "$github_username" ] || [ -z "$github_token" ]; then
-        error "Username and token required"
+        error "Both username and personal access token are required"
     fi
     
     echo
-    info "Testing authentication..."
+    info "Validating GitHub credentials and permissions..."
     
     # Test GitHub API
     if curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep -q "login"; then
         github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
         log "GitHub API access ($github_user)"
     else
-        error "GitHub API authentication failed - check your token"
+        error "GitHub API authentication failed. Please verify your token has the correct permissions"
     fi
     
     # Test package access
@@ -182,41 +182,41 @@ github_auth() {
     if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin >/dev/null 2>&1; then
         log "Docker registry login"
     else
-        error "Docker registry login failed - check your credentials"
+        error "GitHub Container Registry authentication failed. Please verify your credentials"
     fi
     
     # Test image pull
     if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
         log "TofuPilot image access"
     else
-        error "Failed to pull TofuPilot image - check your access permissions"
+        error "Unable to access TofuPilot container image. Please verify your repository access permissions"
     fi
     
     log "Authentication complete"
 }
 
-# Check system requirements
+# System Prerequisites and Dependency Validation
 check_requirements() {
-    info "Checking system requirements"
+    info "Performing system requirements validation"
     
     # Root check
     if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "false" ]; then
-        error "Don't run as root. Use --allow-root if needed"
+        error "Execution as root user is not recommended. Use --allow-root flag if administrative privileges are required"
     fi
     
     if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "true" ]; then
-        warn "Running as root - may cause file ownership issues"
+        warn "Administrative execution detected. This may result in file ownership conflicts"
     fi
     
     # OS check
     if ! command_exists apt; then
-        error "Requires Ubuntu/Debian with apt"
+        error "This deployment requires Ubuntu or Debian Linux with APT package manager"
     fi
     log "Operating system"
     
     # Docker check
     if ! command_exists docker; then
-        info "Installing Docker..."
+        info "Installing Docker container runtime..."
         curl -fsSL https://get.docker.com | sh >/dev/null 2>&1
         sudo usermod -aG docker "$USER"
         log "Docker installed"
@@ -226,21 +226,21 @@ check_requirements() {
     
     # Docker permissions
     if ! docker ps >/dev/null 2>&1; then
-        info "Fixing Docker permissions..."
+        info "Configuring Docker runtime permissions..."
         if ! groups "$USER" | grep -q docker; then
             sudo usermod -aG docker "$USER"
         fi
         sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
         
         if ! docker ps >/dev/null 2>&1; then
-            error "Docker permissions failed - logout/login required"
+            error "Docker permission configuration failed. Please log out and log back in to apply group changes"
         fi
     fi
     log "Docker permissions"
     
     # Docker Compose
     if ! command_exists docker-compose && ! docker compose version >/dev/null 2>&1; then
-        info "Installing Docker Compose..."
+        info "Installing Docker Compose orchestration tool..."
         sudo apt update >/dev/null 2>&1
         sudo apt install -y docker-compose-plugin >/dev/null 2>&1
         log "Docker Compose installed"
@@ -266,7 +266,7 @@ check_requirements() {
     fi
 }
 
-# Create Docker Compose file (for curl deployments)
+# Generate Docker Compose configuration for containerized deployment
 create_compose_file() {
   log "Creating Docker Compose configuration..."
   
@@ -400,7 +400,7 @@ EOF
   log "Docker Compose file created"
 }
 
-# Create environment file
+# Generate application environment configuration
 create_env_file() {
     info "Creating environment file..."
     
@@ -447,7 +447,7 @@ EOF
     log "Environment file created"
 }
 
-# Collect user configuration
+# Interactive configuration collection and validation
 collect_config() {
     info "Collecting configuration"
     echo
@@ -645,32 +645,32 @@ collect_config() {
 
 # Deploy the application
 deploy() {
-    log "Starting deployment..."
+    log "Starting deployment process..."
     
     # Configuration variables are already loaded in main script
     # Create configuration files
-    info "Creating configuration files..."
+    info "Generating deployment configuration files..."
     create_compose_file
     create_env_file
     
-    info "Pulling Docker images..."
+    info "Downloading container images from registry..."
     
     if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
         log "Images downloaded"
     else
-        error "Failed to pull images"
+        error "Container image download failed. Please verify network connectivity and registry access"
     fi
     
-    info "Starting services..."
+    info "Initializing containerized services..."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
     
     if ! docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
-        error "Docker containers failed to start. Check logs with: docker compose logs"
+        error "Service initialization failed. Review deployment logs using: docker compose logs"
     fi
     
     log "Services started"
     
-    info "Waiting for services to be ready..."
+    info "Performing service readiness validation..."
     
     # Wait for database
     local db_ready=false
@@ -687,11 +687,11 @@ deploy() {
     if [ "$db_ready" = "true" ]; then
         log "Database ready"
     else
-        warn "Database taking longer than expected"
+        warn "Database initialization is taking longer than expected"
     fi
     
     # Quick app check
-    info "Checking application status..."
+    info "Validating application service status..."
     if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
         log "Application ready"
     else
@@ -745,38 +745,38 @@ Then restart the deployment:
 show_info() {
     echo
     echo "=================================="
-    log "🎉 TofuPilot deployment complete!"
+    log "🎉 TofuPilot deployment completed successfully!"
     echo "=================================="
     echo
-    info "Your TofuPilot instance is available at:"
+    info "Your TofuPilot instance is accessible at:"
     echo "  Main app: https://${DOMAIN_NAME}"
     echo "  Storage:  https://${STORAGE_DOMAIN_NAME}"
     echo
-    warn "Make sure your DNS is pointing:"
+    warn "Ensure DNS records are configured as follows:"
     echo "  ${DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
     echo "  ${STORAGE_DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
     echo
-    info "Useful commands:"
+    info "Administrative commands:"
     echo "  View logs:    docker compose logs -f"
     echo "  Stop:         docker compose down"
     echo "  Restart:      docker compose restart"
     echo "  Status:       ./deploy.sh --status"
     echo
     echo
-    info "Configuration files:"
+    info "Deployment configuration files:"
     echo "  Docker Compose: $COMPOSE_FILE"
     echo "  Environment:    $ENV_FILE"
     echo ""
     echo
-    warn "Configure your authentication providers:"
+    warn "Complete identity provider configuration:"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
-        echo "  Google OAuth: Add https://${DOMAIN_NAME}/api/auth/callback/google as redirect URI"
+        echo "  Google OAuth: Configure redirect URI: https://${DOMAIN_NAME}/api/auth/callback/google"
     fi
     if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
-        echo "  Microsoft Entra ID: Add https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id as redirect URI"
+        echo "  Microsoft Entra ID: Configure redirect URI: https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id"
     fi
     if [ -n "$EMAIL_SMTP_HOST" ]; then
-        echo "  Email auth: Configured with ${EMAIL_SMTP_HOST}"
+        echo "  SMTP Authentication: Configured using ${EMAIL_SMTP_HOST}"
     fi
     echo
 }
@@ -970,7 +970,7 @@ uninstall_tofupilot() {
 
 # Show usage
 usage() {
-    echo "TofuPilot Deployment Script"
+    echo "TofuPilot Self-Hosting Deployment Script"
     echo "=========================="
     echo
     echo "Usage: $0 [OPTIONS]"
@@ -1078,11 +1078,11 @@ step "6/6: COMPLETE"
 show_info
 
 echo
-log "Deployment complete"
+log "Deployment completed successfully"
 
 echo
-echo "Next steps:"
-echo "1. Point DNS to this server"
-echo "2. Configure auth providers"
-echo "3. Visit https://${DOMAIN_NAME}"
+echo "Post-deployment configuration steps:"
+echo "1. Configure DNS records to point to this server"
+echo "2. Complete identity provider configuration"
+echo "3. Access your TofuPilot instance at https://${DOMAIN_NAME}"
 
