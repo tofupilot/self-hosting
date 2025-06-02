@@ -925,7 +925,7 @@ start_services() {
 uninstall_tofupilot() {
     echo
     echo "=========================================="
-    error "TofuPilot Complete Uninstall"
+    echo -e "${RED}⚠️  TofuPilot Complete Uninstall${NC}"
     echo "=========================================="
     echo
     warn "This will completely remove:"
