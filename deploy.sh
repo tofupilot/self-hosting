@@ -22,6 +22,18 @@ ENV_FILE="$SCRIPT_DIR/.env"
 # Colors for output
 RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
 
+# TofuPilot banner
+show_banner() {
+    # Colors for the tofu art
+    local yellow="\033[33m"  # Yellow for the plane
+    local blue="\033[34m"    # Blue for the cap border
+    local reset="\033[0m"    # Reset color
+    
+    echo -e "${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
+    echo "[•ᴗ•] TofuPilot Self-Hosting Deploy.sh"
+    echo
+}
+
 #----------------------------#
 #         Functions          #
 #----------------------------#
@@ -990,6 +1002,9 @@ usage() {
 # Initialize variables
 ALLOW_ROOT="false"
 
+# Show banner for all operations
+show_banner
+
 # Parse command line arguments
 case "${1:-}" in
     --allow-root)
@@ -1033,12 +1048,6 @@ case "${1:-}" in
 esac
 
 # Main installation flow
-echo
-echo "=========================================="
-step "TofuPilot Production Deployment"
-info "Full setup with SSL certificates"
-echo "=========================================="
-echo
 
 step "1/6 System Requirements"
 check_requirements
