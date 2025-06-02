@@ -41,7 +41,12 @@ log(){ echo -e "${GREEN}✓ $1${NC}"; }
 warn(){ echo -e "${YELLOW}! $1${NC}"; }
 error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
 info(){ echo -e "${CYAN}→ $1${NC}"; }
-step(){ echo -e "${BLUE}$1${NC}"; }
+step(){ 
+    echo
+    echo -e "${CYAN}>>> STEP $1${NC}"
+    echo -e "${CYAN}-----------------------------${NC}"
+    echo
+}
 
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
@@ -447,7 +452,7 @@ collect_config() {
     info "Collecting configuration"
     echo
     
-    step "Production Configuration"
+    step "CONFIG: PRODUCTION CONFIGURATION"
     echo
     
     # Domain Configuration
@@ -926,7 +931,7 @@ uninstall_tofupilot() {
     fi
     
     echo
-    info "Step 1: Stopping all TofuPilot services..."
+    step "1/6: STOPPING SERVICES"
     if [ -f "$COMPOSE_FILE" ]; then
         docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || docker-compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
         log "Services stopped"
@@ -934,24 +939,24 @@ uninstall_tofupilot() {
         warn "No docker-compose.yml found"
     fi
     
-    info "Step 2: Removing TofuPilot containers..."
+    step "2/6: REMOVING CONTAINERS"
     docker ps -a --filter "name=tofupilot" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
     log "Containers removed"
     
-    info "Step 3: Removing TofuPilot volumes..."
+    step "3/6: REMOVING VOLUMES"
     docker volume ls --filter "name=tofupilot" --format "{{.Name}}" | xargs -r docker volume rm 2>/dev/null || true
     docker volume ls --filter "name=root" --format "{{.Name}}" | grep -E "(tofupilot-database-data|tofupilot-storage-data|tofupilot-proxy-acme|tofupilot-app-cache)" | xargs -r docker volume rm 2>/dev/null || true
     log "Volumes removed"
     
-    info "Step 4: Removing configuration files..."
+    step "4/6: REMOVING CONFIGURATION"
     rm -f "$ENV_FILE" "$COMPOSE_FILE" "${ENV_FILE}.backup."* 2>/dev/null || true
     log "Configuration files removed"
     
-    info "Step 5: Cleaning up Docker system..."
+    step "5/6: CLEANING DOCKER SYSTEM"
     docker system prune -f --volumes 2>/dev/null || true
     log "Docker system cleaned"
     
-    info "Step 6: Removing TofuPilot images..."
+    step "6/6: REMOVING IMAGES"
     docker images --filter "reference=ghcr.io/tofupilot/*" --format "{{.Repository}}:{{.Tag}}" | xargs -r docker rmi 2>/dev/null || true
     log "Images removed"
     
@@ -1049,27 +1054,27 @@ esac
 
 # Main installation flow
 
-step "1/6 System Requirements"
+step "1/6: PRE-FLIGHT CHECKS"
 check_requirements
 
 echo
-step "2/6 GitHub Authentication"
+step "2/6: GITHUB AUTHENTICATION"
 github_auth
 
 echo
-step "3/6 Configuration"
+step "3/6: CONFIGURATION"
 collect_config
 
 echo
-step "4/6 Deployment"
+step "4/6: DEPLOYMENT"
 deploy
 
 echo
-step "5/6 Verification"
+step "5/6: VERIFICATION"
 sleep 2
 
 echo
-step "6/6 Complete"
+step "6/6: COMPLETE"
 show_info
 
 echo
