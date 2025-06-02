@@ -826,8 +826,9 @@ show_info() {
 
 # Show service status
 show_status() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
+    # Check if TofuPilot containers exist
+    if ! docker ps -a --filter "name=tofupilot-" --format "table {{.Names}}" | grep -q "tofupilot-"; then
+        error "No TofuPilot deployment found. Run deployment first."
     fi
     
     log "Checking TofuPilot service status..."
@@ -836,9 +837,9 @@ show_status() {
     echo "======================="
     echo
     
-    # Show docker-compose status (TofuPilot containers only)
+    # Show docker container status (TofuPilot containers only)
     info "Docker Container Status:"
-    docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep tofupilot
+    docker ps -a --filter "name=tofupilot-" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     
     info "Data Volumes:"
     local volumes=$(docker system df -v 2>/dev/null | grep -E "(root_database-data|root_storage-data|root_traefik-acme)" | awk '{print $1 " " $3}')
@@ -888,16 +889,27 @@ show_status() {
 show_logs() {
     local service="$1"
     
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
+    # Check if TofuPilot containers are running
+    if ! docker ps --filter "name=tofupilot-" --format "table {{.Names}}" | grep -q "tofupilot-"; then
+        error "No TofuPilot deployment found. Run deployment first."
     fi
     
     if [ -n "$service" ]; then
         log "Showing logs for service: $service"
-        docker compose -f "$COMPOSE_FILE" logs -f --tail=100 "$service"
+        docker logs -f --tail=100 "tofupilot-$service"
     else
         log "Showing logs for all services"
-        docker compose -f "$COMPOSE_FILE" logs -f --tail=100
+        echo "=== TofuPilot App Logs ==="
+        docker logs --tail=50 tofupilot-app 2>/dev/null || echo "App container not running"
+        echo
+        echo "=== Database Logs ==="
+        docker logs --tail=50 tofupilot-database 2>/dev/null || echo "Database container not running"
+        echo
+        echo "=== Traefik Logs ==="
+        docker logs --tail=50 tofupilot-traefik 2>/dev/null || echo "Traefik container not running"
+        echo
+        echo "=== Storage Logs ==="
+        docker logs --tail=50 tofupilot-storage 2>/dev/null || echo "Storage container not running"
     fi
 }
 
@@ -905,16 +917,17 @@ show_logs() {
 restart_services() {
     local service="$1"
     
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
+    # Check if TofuPilot containers exist
+    if ! docker ps -a --filter "name=tofupilot-" --format "table {{.Names}}" | grep -q "tofupilot-"; then
+        error "No TofuPilot deployment found. Run deployment first."
     fi
     
     if [ -n "$service" ]; then
         log "Restarting service: $service"
-        docker compose -f "$COMPOSE_FILE" restart "$service"
+        docker restart "tofupilot-$service"
     else
         log "Restarting all services"
-        docker compose -f "$COMPOSE_FILE" restart
+        docker restart tofupilot-app tofupilot-database tofupilot-traefik tofupilot-storage 2>/dev/null || true
     fi
     
     log "Restart complete"
@@ -922,24 +935,20 @@ restart_services() {
 
 # Stop services
 stop_services() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
+    # Check if TofuPilot containers exist
+    if ! docker ps -a --filter "name=tofupilot-" --format "table {{.Names}}" | grep -q "tofupilot-"; then
+        error "No TofuPilot deployment found."
     fi
     
     log "Stopping all services..."
-    docker compose -f "$COMPOSE_FILE" down
+    docker stop tofupilot-app tofupilot-database tofupilot-traefik tofupilot-storage 2>/dev/null || true
+    docker rm tofupilot-app tofupilot-database tofupilot-traefik tofupilot-storage 2>/dev/null || true
     log "All services stopped"
 }
 
 # Start services  
 start_services() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    log "Starting all services..."
-    docker compose -f "$COMPOSE_FILE" up -d
-    log "All services started"
+    error "Use the deployment script to start services: ./deploy.sh"
 }
 
 # Show usage
