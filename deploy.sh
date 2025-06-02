@@ -262,9 +262,16 @@ services:
     container_name: tofupilot-traefik
     restart: unless-stopped
     command:
-      - "sh"
-      - "-c"
-      - "touch /acme.json && chmod 600 /acme.json && traefik --api.dashboard=false --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80 --entrypoints.websecure.address=:443 --certificatesresolvers.letsencrypt.acme.tlschallenge=true --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL} --certificatesresolvers.letsencrypt.acme.storage=/acme.json --entrypoints.web.http.redirections.entrypoint.to=websecure --entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
     ports:
       - "80:80"
       - "443:443"
@@ -633,7 +640,7 @@ deploy() {
     info "Starting services..."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
     
-    if ! docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+    if ! docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
         error "Docker containers failed to start. Check logs with: docker compose logs"
     fi
     
@@ -644,7 +651,7 @@ deploy() {
     # Wait for database
     local db_ready=false
     for i in {1..30}; do
-        if docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
+        if docker compose -f "$COMPOSE_FILE" ps database 2>/dev/null | grep -q "Up"; then
             db_ready=true
             break
         fi
@@ -662,7 +669,7 @@ deploy() {
     # Wait for app
     local app_ready=false
     for i in {1..20}; do
-        if docker compose -f "$COMPOSE_FILE" ps app | grep -q "Up"; then
+        if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
             app_ready=true
             break
         fi
@@ -831,7 +838,7 @@ show_status() {
     
     # Show docker-compose status (TofuPilot containers only)
     info "Docker Container Status:"
-    docker compose -f "$COMPOSE_FILE" ps | grep tofupilot
+    docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep tofupilot
     
     info "Data Volumes:"
     local volumes=$(docker system df -v 2>/dev/null | grep -E "(root_database-data|root_storage-data|root_traefik-acme)" | awk '{print $1 " " $3}')
@@ -1073,4 +1080,10 @@ if [ "$LOCAL_MODE" = "false" ]; then
 else
     echo
     echo "Access: http://localhost"
+fi
+
+# Cleanup: Remove docker-compose.yml file after deployment
+if [ -f "$COMPOSE_FILE" ]; then
+    rm -f "$COMPOSE_FILE"
+    info "Cleaned up docker-compose.yml file"
 fi
