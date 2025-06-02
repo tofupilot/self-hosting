@@ -672,22 +672,12 @@ deploy() {
         warn "Database taking longer than expected"
     fi
     
-    # Wait for app
-    local app_ready=false
-    for i in {1..20}; do
-        if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
-            app_ready=true
-            break
-        fi
-        progress_bar $i 20
-        sleep 3
-    done
-    echo
-    
-    if [ "$app_ready" = "true" ]; then
+    # Quick app check
+    info "Checking application status..."
+    if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
         log "Application ready"
     else
-        warn "Application taking longer than expected"
+        warn "Application may still be starting (check logs with: docker compose logs app)"
     fi
     
     # Check if services are running
@@ -717,63 +707,28 @@ Then restart the deployment:
         fi
         
         if [ "$LOCAL_MODE" = "false" ]; then
-            info "Checking SSL certificate generation..."
+            info "Checking SSL certificates..."
             
-            local ssl_ready=false
-            local retry_count=0
-            
-            while [ $retry_count -lt 24 ]; do  # 4 minutes max
-                progress_bar $retry_count 24
-                
-                # Check if HTTPS is working
-                if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                    ssl_ready=true
-                    break
-                fi
-                
-                # Check if at least HTTP is working
-                if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                    # HTTP works, SSL might still be provisioning
-                    if [ $retry_count -gt 12 ]; then
-                        break  # Give up on SSL after 2+ minutes, HTTP is working
-                    fi
-                fi
-                
-                sleep 10
-                retry_count=$((retry_count + 1))
-            done
-            echo
-            
-            if [ "$ssl_ready" = "true" ]; then
+            # Instant check for HTTPS
+            if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
                 log "HTTPS accessible at https://${DOMAIN_NAME}"
-            elif curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                log "HTTP accessible (SSL may still be provisioning)"
             else
-                warn "Service not yet accessible - DNS may still be propagating"
+                warn "HTTPS not ready yet. SSL certificates may take a few minutes to generate."
+                info "Check later with: curl -I https://${DOMAIN_NAME}"
+                if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
+                    info "HTTP is working: http://${DOMAIN_NAME}"
+                fi
             fi
         else
             info "Testing local connectivity..."
             
-            local local_ready=false
-            for i in {1..10}; do
-                progress_bar $i 10
-                
-                if curl -f -s -I "http://localhost" >/dev/null 2>&1; then
-                    local_ready=true
-                    break
-                elif curl -f -s -I "http://localhost:3000" >/dev/null 2>&1; then
-                    local_ready=true
-                    break
-                fi
-                
-                sleep 3
-            done
-            echo
-            
-            if [ "$local_ready" = "true" ]; then
-                log "Local access ready at http://localhost"
+            # Instant check for local access
+            if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
+                log "Local access ready at http://${DOMAIN_NAME}"
+            elif curl -f -s -I "http://${DOMAIN_NAME}:3000" >/dev/null 2>&1; then
+                log "Local access ready at http://${DOMAIN_NAME}:3000"
             else
-                warn "Local service not yet ready - may need more time"
+                warn "Local service not ready yet. Check later with: curl -I http://${DOMAIN_NAME}"
             fi
         fi
     else
