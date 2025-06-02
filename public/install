@@ -452,8 +452,6 @@ EOF
 collect_config() {
     info "Initiating interactive configuration collection"
     
-    step "CONFIG: PRODUCTION CONFIGURATION"
-    
     # Domain Configuration
     echo "Domain Configuration:"
     DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
