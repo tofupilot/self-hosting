@@ -148,7 +148,7 @@ github_auth() {
         github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
         log "GitHub API access ($github_user)"
     else
-        warn "GitHub API failed - using dummy auth for testing"
+        error "GitHub API authentication failed - check your token"
     fi
     
     # Test package access
@@ -165,14 +165,14 @@ github_auth() {
     if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin >/dev/null 2>&1; then
         log "Docker registry login"
     else
-        warn "Docker login failed - using dummy auth for testing"
+        error "Docker registry login failed - check your credentials"
     fi
     
     # Test image pull
     if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
         log "TofuPilot image access"
     else
-        warn "Image pull failed - using dummy auth for testing"
+        error "Failed to pull TofuPilot image - check your access permissions"
     fi
     
     log "Authentication complete"
@@ -488,7 +488,7 @@ collect_config() {
     fi
     
     EDGEDB_USER="edgedb"
-    EDGEDB_DATABASE="edgedb"
+    EDGEDB_DATABASE="main"
     EDGEDB_HOST="database"
     EDGEDB_PORT="5656"
     EDGEDB_CLIENT_TLS_SECURITY="insecure"
