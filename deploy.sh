@@ -1296,22 +1296,66 @@ show_status() {
     echo
     echo "Data Volumes:"
     info "Checking Docker volumes for data persistence..."
-    local project_name=$(docker compose config --project-name 2>/dev/null || echo "self-hosting")
-    echo "  Database: ${project_name}_database-data ($(docker volume ls -f name=${project_name}_database-data --format '{{.Size}}' 2>/dev/null || echo 'unknown size'))"
-    echo "  Storage:  ${project_name}_storage-data ($(docker volume ls -f name=${project_name}_storage-data --format '{{.Size}}' 2>/dev/null || echo 'unknown size'))"
-    if [ "$LOCAL_MODE" != "true" ]; then
-        echo "  SSL Certs: ${project_name}_traefik-acme ($(docker volume ls -f name=${project_name}_traefik-acme --format '{{.Size}}' 2>/dev/null || echo 'unknown size'))"
+    
+    # Try to get project name, fall back to common patterns
+    local project_name=""
+    if [ -f "$COMPOSE_FILE" ]; then
+        project_name=$(docker compose -f "$COMPOSE_FILE" config --project-name 2>/dev/null || echo "")
+    fi
+    
+    # If no project name found, detect from running containers
+    if [ -z "$project_name" ]; then
+        project_name=$(docker ps --format '{{.Names}}' | grep tofupilot | head -1 | cut -d- -f1 2>/dev/null || echo "")
+    fi
+    
+    # Last resort: common naming patterns
+    if [ -z "$project_name" ]; then
+        project_name="self-hosting"
+    fi
+    
+    # Check for volumes with different naming patterns
+    local db_volume=""
+    local storage_volume=""
+    local ssl_volume=""
+    
+    # Try project-based names first
+    db_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*database|database.*data)" | head -1 2>/dev/null || echo "")
+    storage_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*storage|storage.*data)" | head -1 2>/dev/null || echo "")
+    ssl_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*traefik|traefik.*acme)" | head -1 2>/dev/null || echo "")
+    
+    # Show what we found
+    if [ -n "$db_volume" ]; then
+        local db_size=$(docker volume ls --format 'table {{.Name}}\t{{.Size}}' | grep "$db_volume" | awk '{print $2}' 2>/dev/null || echo "unknown")
+        echo "  Database: $db_volume ($db_size)"
+    else
+        echo "  Database: No database volume found"
+    fi
+    
+    if [ -n "$storage_volume" ]; then
+        local storage_size=$(docker volume ls --format 'table {{.Name}}\t{{.Size}}' | grep "$storage_volume" | awk '{print $2}' 2>/dev/null || echo "unknown")
+        echo "  Storage:  $storage_volume ($storage_size)"
+    else
+        echo "  Storage:  No storage volume found"
+    fi
+    
+    if [ -n "$ssl_volume" ]; then
+        local ssl_size=$(docker volume ls --format 'table {{.Name}}\t{{.Size}}' | grep "$ssl_volume" | awk '{print $2}' 2>/dev/null || echo "unknown")
+        echo "  SSL Certs: $ssl_volume ($ssl_size)"
+    else
+        echo "  SSL Certs: No SSL volume found"
     fi
     
     # Show all TofuPilot related volumes
-    local all_volumes=$(docker volume ls --format '{{.Name}}' | grep -E "(tofupilot|${project_name})" 2>/dev/null || true)
+    echo "  All related volumes:"
+    local all_volumes=$(docker volume ls --format '{{.Name}}' | grep -E "(tofupilot|database|storage|traefik|acme)" 2>/dev/null || echo "")
     if [ -n "$all_volumes" ]; then
-        echo "  All related volumes:"
         while IFS= read -r vol; do
             if [ -n "$vol" ]; then
                 echo "    - $vol"
             fi
         done <<< "$all_volumes"
+    else
+        echo "    - No TofuPilot volumes found"
     fi
 }
 
