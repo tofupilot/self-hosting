@@ -29,8 +29,9 @@ show_banner() {
     local blue="\033[34m"    # Blue for the cap border
     local reset="\033[0m"    # Reset color
     
-    echo -e "${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
-    echo "[•ᴗ•] TofuPilot Self-Hosting Installer"
+    echo
+    echo -e "         ${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
+    echo "     [•ᴗ•] TofuPilot Self-Hosting Installer"
     echo
 }
 
@@ -449,11 +450,9 @@ EOF
 
 # Interactive configuration collection and validation
 collect_config() {
-    info "Collecting configuration"
-    echo
+    info "Initiating interactive configuration collection"
     
     step "CONFIG: PRODUCTION CONFIGURATION"
-    echo
     
     # Domain Configuration
     echo "Domain Configuration:"
@@ -685,17 +684,17 @@ deploy() {
     echo
     
     if [ "$db_ready" = "true" ]; then
-        log "Database ready"
+        log "Database container is running"
     else
-        warn "Database initialization is taking longer than expected"
+        warn "Database startup is taking longer than expected. This is normal for first-time setup."
     fi
     
     # Quick app check
     info "Validating application service status..."
     if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
-        log "Application ready"
+        log "Application container is running"
     else
-        warn "Application may still be starting (check logs with: docker compose logs app)"
+        warn "Application initialization in progress. Monitor with: docker compose logs app"
     fi
     
     # Check if services are running
@@ -749,35 +748,31 @@ show_info() {
     echo "=================================="
     echo
     info "Your TofuPilot instance is accessible at:"
-    echo "  Main app: https://${DOMAIN_NAME}"
-    echo "  Storage:  https://${STORAGE_DOMAIN_NAME}"
-    echo
-    warn "Ensure DNS records are configured as follows:"
-    echo "  ${DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
-    echo "  ${STORAGE_DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
-    echo
-    info "Administrative commands:"
-    echo "  View logs:    docker compose logs -f"
-    echo "  Stop:         docker compose down"
-    echo "  Restart:      docker compose restart"
-    echo "  Status:       ./deploy.sh --status"
-    echo
-    echo
-    info "Deployment configuration files:"
-    echo "  Docker Compose: $COMPOSE_FILE"
-    echo "  Environment:    $ENV_FILE"
-    echo ""
+    echo "  • Main app: https://${DOMAIN_NAME}"
+    echo "  • Storage:  https://${STORAGE_DOMAIN_NAME}"
     echo
     warn "Complete identity provider configuration:"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
-        echo "  Google OAuth: Configure redirect URI: https://${DOMAIN_NAME}/api/auth/callback/google"
+        echo "  • Google OAuth: Configure redirect URI:"
+        echo "    https://${DOMAIN_NAME}/api/auth/callback/google"
     fi
     if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
-        echo "  Microsoft Entra ID: Configure redirect URI: https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id"
+        echo "  • Microsoft Entra ID: Configure redirect URI:"
+        echo "    https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id"
     fi
     if [ -n "$EMAIL_SMTP_HOST" ]; then
-        echo "  SMTP Authentication: Configured using ${EMAIL_SMTP_HOST}"
+        echo "  • SMTP Authentication: Configured using ${EMAIL_SMTP_HOST}"
     fi
+    echo
+    info "Next steps:"
+    echo "  1. Complete authentication provider setup above"
+    echo "  2. Access your TofuPilot instance at https://${DOMAIN_NAME}"
+    echo
+    info "Administrative commands:"
+    echo "  • View logs:    docker compose logs -f"
+    echo "  • Stop:         docker compose down"
+    echo "  • Restart:      docker compose restart"
+    echo "  • Status:       curl -sSL <installer-url> | bash -s -- --status"
     echo
 }
 
@@ -973,7 +968,7 @@ usage() {
     echo "TofuPilot Self-Hosting Deployment Script"
     echo "=========================="
     echo
-    echo "Usage: $0 [OPTIONS]"
+    echo "Usage: curl -sSL <installer-url> | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
     echo "  (no options)            Fresh TofuPilot installation"
@@ -990,12 +985,12 @@ usage() {
     echo "  --help                  Show this help message"
     echo
     echo "Examples:"
-    echo "  $0                      # Fresh installation"
-    echo "  $0 --allow-root         # Fresh installation as root user"
+    echo "  curl -sSL <url> | bash                    # Fresh installation"
+    echo "  curl -sSL <url> | bash -s -- --allow-root # Fresh installation as root"
     echo ""
-    echo "  $0 --status             # Check deployment status"
-    echo "  $0 --logs app           # Show application logs"
-    echo "  $0 --uninstall          # Completely remove TofuPilot"
+    echo "  curl -sSL <url> | bash -s -- --status    # Check deployment status"
+    echo "  curl -sSL <url> | bash -s -- --logs app  # Show application logs"
+    echo "  curl -sSL <url> | bash -s -- --uninstall # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
@@ -1069,20 +1064,10 @@ echo
 step "4/6: DEPLOYMENT"
 deploy
 
-echo
 step "5/6: VERIFICATION"
+info "Verifying deployment status..."
 sleep 2
 
-echo
 step "6/6: COMPLETE"
 show_info
-
-echo
-log "Deployment completed successfully"
-
-echo
-echo "Post-deployment configuration steps:"
-echo "1. Configure DNS records to point to this server"
-echo "2. Complete identity provider configuration"
-echo "3. Access your TofuPilot instance at https://${DOMAIN_NAME}"
 
