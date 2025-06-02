@@ -303,7 +303,7 @@ services:
       - AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
       
       # Database Configuration
-      - GEL_DSN=gel://edgedb:${GEL_PASSWORD}@database:5656/edgedb
+      - GEL_DSN=gel://edgedb:${GEL_PASSWORD}@database:5656/main
       - GEL_CLIENT_TLS_SECURITY=insecure
       
       # Storage Configuration
@@ -394,7 +394,7 @@ AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
 
 # Database Configuration
 GEL_PASSWORD=${GEL_PASSWORD}
-GEL_DSN=gel://edgedb:${GEL_PASSWORD}@database:5656/edgedb
+GEL_DSN=gel://edgedb:${GEL_PASSWORD}@database:5656/main
 GEL_CLIENT_TLS_SECURITY=insecure
 
 # Storage Configuration
