@@ -933,12 +933,6 @@ show_info() {
     echo "  Restart:      docker compose restart"
     echo "  Status:       ./deploy.sh --status"
     echo
-    info "Backup & Update commands:"
-    echo "  Create backup:  ./deploy.sh --backup"
-    echo "  List backups:   ./deploy.sh --list-backups"
-    echo "  Restore:        ./deploy.sh --restore <backup-name>"
-    echo "  Update:         ./deploy.sh --update"
-    echo "  Run migrations: ./deploy.sh --migrate"
     echo
     info "Configuration files:"
     echo "  Docker Compose: $COMPOSE_FILE"
@@ -966,281 +960,7 @@ show_info() {
     echo
 }
 
-# Create backup
-create_backup() {
-    local backup_name="${1:-$(date +%Y%m%d_%H%M%S)}"
-    local backup_dir="$SCRIPT_DIR/backups/$backup_name"
-    
-    log "Creating backup: $backup_name"
-    info "Backup will be stored in: $backup_dir"
-    
-    mkdir -p "$backup_dir"
-    
-    # Backup configuration files
-    info "Backing up configuration files..."
-    cp "$ENV_FILE" "$backup_dir/" 2>/dev/null || true
-    cp "$COMPOSE_FILE" "$backup_dir/" 2>/dev/null || true
-    cp "$CONFIG_FILE" "$backup_dir/" 2>/dev/null || true
-    
-    # Backup database
-    if docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
-        log "Backing up EdgeDB database..."
-        info "Creating database dump - this may take a few minutes..."
-        # Check if local mode for TLS settings
-        local tls_flag=""
-        if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
-            tls_flag="--tls-security=insecure"
-        fi
-        # Try backing up with different database names
-        if docker compose -f "$COMPOSE_FILE" exec -T database gel dump --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656?tls_security=insecure" /tmp/backup.dump >/dev/null 2>&1; then
-            docker compose -f "$COMPOSE_FILE" exec -T database cat /tmp/backup.dump > "$backup_dir/database.dump"
-            docker compose -f "$COMPOSE_FILE" exec -T database rm /tmp/backup.dump
-            log "Database backup completed (default database)"
-        elif docker compose -f "$COMPOSE_FILE" exec -T database gel dump --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656/main?tls_security=insecure" /tmp/backup.dump >/dev/null 2>&1; then
-            docker compose -f "$COMPOSE_FILE" exec -T database cat /tmp/backup.dump > "$backup_dir/database.dump"
-            docker compose -f "$COMPOSE_FILE" exec -T database rm /tmp/backup.dump
-            log "Database backup completed (main database)"
-        else
-            warn "Database backup failed - no accessible database found"
-        fi
 
-    else
-        warn "Database service not running - skipping database backup"
-    fi
-    
-    # Backup storage data
-    if docker compose -f "$COMPOSE_FILE" ps storage | grep -q "Up"; then
-        log "Backing up storage data..."
-        info "Compressing storage files - this may take several minutes..."
-        docker compose -f "$COMPOSE_FILE" exec -T storage tar czf - /data 2>/dev/null > "$backup_dir/storage.tar.gz" || {
-            warn "Storage backup failed - creating volume backup instead"
-            info "Trying alternative backup method..."
-            # Fallback: backup docker volumes
-            docker run --rm -v "$(basename "$SCRIPT_DIR")_storage-data":/data -v "$backup_dir":/backup alpine tar czf /backup/storage-volume.tar.gz -C /data . 2>/dev/null || true
-        }
-    else
-        warn "Storage service not running - skipping storage backup"
-    fi
-    
-    # Create backup manifest
-    cat > "$backup_dir/manifest.txt" <<EOF
-TofuPilot Backup Manifest
-Created: $(date)
-Backup Name: $backup_name
-TofuPilot Version: $(docker compose -f "$COMPOSE_FILE" images app | tail -n +2 | awk '{print $4}' || echo "unknown")
-Files Included:
-- .env (configuration)
-- docker-compose.yml (service definitions)
-- .tofupilot.conf (deployment config)
-- database.dump (EdgeDB backup)
-- storage.tar.gz (MinIO data)
-Restore Command:
-./deploy.sh --restore $backup_name
-EOF
-    
-    log "Backup created: $backup_dir"
-    echo "  Backup location: $backup_dir"
-    echo "  Backup size: $(du -sh "$backup_dir" | cut -f1)"
-}
-
-# Restore from backup
-restore_backup() {
-    local backup_name="$1"
-    local backup_dir="$SCRIPT_DIR/backups/$backup_name"
-    
-    if [ ! -d "$backup_dir" ]; then
-        error "Backup not found: $backup_name"
-    fi
-    
-    log "Restoring from backup: $backup_name"
-    
-    # Stop current services
-    if [ -f "$COMPOSE_FILE" ]; then
-        log "Stopping current services..."
-        docker compose -f "$COMPOSE_FILE" down
-    fi
-    
-    # Restore configuration files
-    log "Restoring configuration..."
-    cp "$backup_dir/.env" "$ENV_FILE" 2>/dev/null || true
-    cp "$backup_dir/docker-compose.yml" "$COMPOSE_FILE" 2>/dev/null || true
-    cp "$backup_dir/.tofupilot.conf" "$CONFIG_FILE" 2>/dev/null || true
-    
-    # Source the restored environment
-    if [ -f "$ENV_FILE" ]; then
-        set -a
-        source "$ENV_FILE"
-        set +a
-    fi
-    
-    # Start services (database first)
-    log "Starting database service..."
-    docker compose -f "$COMPOSE_FILE" up -d database
-    
-    # Wait for database to be ready
-    log "Waiting for database to be ready..."
-    sleep 15
-    
-    # Restore database
-    if [ -f "$backup_dir/database.dump" ]; then
-        log "Restoring database..."
-        # Check if local mode for TLS settings
-        local tls_flag=""
-        if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
-            tls_flag="--tls-security=insecure"
-        fi
-        docker compose -f "$COMPOSE_FILE" exec -T database sh -c "cat > /tmp/restore.dump" < "$backup_dir/database.dump" && \
-        docker compose -f "$COMPOSE_FILE" exec -T database gel restore --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656/edgedb?tls_security=insecure" /tmp/restore.dump && \
-        docker compose -f "$COMPOSE_FILE" exec -T database rm /tmp/restore.dump || {
-            warn "Database restore failed - continuing with other services"
-        }
-    fi
-    
-    # Start storage service
-    log "Starting storage service..."
-    docker compose -f "$COMPOSE_FILE" up -d storage
-    sleep 10
-    
-    # Restore storage data
-    if [ -f "$backup_dir/storage.tar.gz" ]; then
-        log "Restoring storage data..."
-        docker compose -f "$COMPOSE_FILE" exec -T storage sh -c "cd / && tar xzf -" < "$backup_dir/storage.tar.gz" || {
-            warn "Storage restore failed"
-        }
-    elif [ -f "$backup_dir/storage-volume.tar.gz" ]; then
-        log "Restoring storage volume..."
-        docker run --rm -v "$(basename "$SCRIPT_DIR")_storage-data":/data -v "$backup_dir":/backup alpine sh -c "cd /data && tar xzf /backup/storage-volume.tar.gz" || {
-            warn "Storage volume restore failed"
-        }
-    fi
-    
-    # Start all services
-    log "Starting all services..."
-    docker compose -f "$COMPOSE_FILE" up -d
-    
-    log "Restore complete"
-}
-
-
-# Run database migrations (original function for backward compatibility)
-run_migrations() {
-    log "Running database migrations..."
-    
-    if ! docker compose -f "$COMPOSE_FILE" ps database | grep -q "Up"; then
-        error "Database is not running. Start services first."
-    fi
-    
-    # Wait for database to be ready
-    log "Waiting for database to be ready..."
-    local retry_count=0
-    while [ $retry_count -lt 30 ]; do
-        # Check if database container is running and responding
-        if docker compose -f "$COMPOSE_FILE" exec -T database sh -c "ps aux | grep -q gel" 2>/dev/null; then
-            # Check if we can connect to the database
-            local tls_flag=""
-            if [[ "$DOMAIN_NAME" == "localhost" ]] || [[ "$LOCAL_MODE" == "true" ]]; then
-                tls_flag="--tls-security=insecure"
-            fi
-            # Try connecting to default database first
-            if docker compose -f "$COMPOSE_FILE" exec -T database gel query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656?tls_security=insecure" "SELECT 1" >/dev/null 2>&1; then
-                # Try to create edgedb database if it doesn't exist
-                docker compose -f "$COMPOSE_FILE" exec -T database gel query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656?tls_security=insecure" "CREATE DATABASE edgedb" >/dev/null 2>&1 || true
-                break
-            elif docker compose -f "$COMPOSE_FILE" exec -T database gel query --tls-security=insecure --dsn "edgedb://edgedb:${EDGEDB_PASSWORD}@127.0.0.1:5656/main?tls_security=insecure" "SELECT 1" >/dev/null 2>&1; then
-                break
-            fi
-        fi
-        sleep 2
-        retry_count=$((retry_count + 1))
-    done
-    
-    if [ $retry_count -eq 30 ]; then
-        warn "Database failed to become ready after 60 seconds"
-        info "Continuing without migrations - you can run them manually later with: ./deploy.sh --migrate"
-        return 0
-    fi
-    
-    # Run migrations through the app container
-    log "Applying database schema migrations..."
-    if docker compose -f "$COMPOSE_FILE" exec -T app npm run migrate 2>/dev/null; then
-        log "Database migrations completed successfully"
-    else
-        warn "Migration command failed - this might be normal if no migrations are needed"
-        info "Checking if app can connect to database..."
-        if docker compose -f "$COMPOSE_FILE" exec -T app node -e "console.log('App container is working')" 2>/dev/null; then
-            log "App container is responsive"
-        else
-            warn "App container may have issues"
-        fi
-    fi
-    
-    log "Database migrations complete"
-}
-
-
-# List available backups
-list_backups() {
-    local backup_dir="$SCRIPT_DIR/backups"
-    
-    if [ ! -d "$backup_dir" ] || [ -z "$(ls -A "$backup_dir" 2>/dev/null)" ]; then
-        echo "No backups found."
-        return
-    fi
-    
-    echo "Available backups:"
-    echo
-    
-    for backup in "$backup_dir"/*; do
-        if [ -d "$backup" ]; then
-            local backup_name=$(basename "$backup")
-            local backup_size=$(du -sh "$backup" 2>/dev/null | cut -f1 || echo "unknown")
-            local backup_date=""
-            
-            if [ -f "$backup/manifest.txt" ]; then
-                backup_date=$(grep "Created:" "$backup/manifest.txt" | cut -d: -f2- | xargs)
-            fi
-            
-            printf "  %-25s %8s  %s\n" "$backup_name" "$backup_size" "$backup_date"
-        fi
-    done
-    
-    echo
-    echo "Restore with: ./deploy.sh --restore <backup_name>"
-}
-
-# Cleanup old backups
-cleanup_backups() {
-    local keep_count="${1:-5}"
-    local backup_dir="$SCRIPT_DIR/backups"
-    
-    if [ ! -d "$backup_dir" ]; then
-        return
-    fi
-    
-    log "Cleaning up old backups (keeping $keep_count most recent)..."
-    
-    # Get list of backups sorted by modification time
-    local backups=($(ls -1t "$backup_dir" 2>/dev/null || true))
-    local backup_count=${#backups[@]}
-    
-    if [ "$backup_count" -le "$keep_count" ]; then
-        log "No cleanup needed - only $backup_count backups found"
-        return
-    fi
-    
-    # Remove old backups
-    local removed_count=0
-    for ((i=$keep_count; i<$backup_count; i++)); do
-        local backup_path="$backup_dir/${backups[$i]}"
-        if [ -d "$backup_path" ]; then
-            rm -rf "$backup_path"
-            removed_count=$((removed_count + 1))
-            log "Removed old backup: ${backups[$i]}"
-        fi
-    done
-    
-    log "Cleanup complete - removed $removed_count old backups"
-}
 
 # Show service status
 show_status() {
@@ -1372,12 +1092,6 @@ usage() {
     echo "  --local                 Local development setup (no SSL)"
     echo "  --allow-root            Allow running as root user (use with caution)"
     echo
-    echo "Backup & Restore:"
-    echo "  --backup [name]         Create backup (optional custom name)"
-    echo "  --restore <name>        Restore from backup"
-    echo "  --list-backups          List available backups"
-    echo "  --cleanup-backups [n]   Remove old backups (keep n most recent, default: 5)"
-    echo
     echo "Service Management:"
     echo "  --status                Show service status and health"
     echo "  --logs [service]        Show logs (all services or specific)"
@@ -1385,8 +1099,6 @@ usage() {
     echo "  --start                 Start all services"
     echo "  --stop                  Stop all services"
     echo
-    echo "Maintenance:"
-    echo "  --migrate               Run database migrations only"
     echo "  --help                  Show this help message"
     echo
     echo "Examples:"
@@ -1395,13 +1107,8 @@ usage() {
     echo "  $0 --allow-root         # Fresh installation as root user"
     echo "  $0 --allow-root --local # Local setup as root user"
     echo "  $0 --update             # Update existing installation"
-    echo "  $0 --backup             # Create backup with timestamp"
-    echo "  $0 --backup my-backup   # Create backup with custom name"
-    echo "  $0 --restore my-backup  # Restore from specific backup"
-    echo "  $0 --list-backups       # Show available backups"
     echo "  $0 --status             # Check deployment status"
     echo "  $0 --logs app           # Show application logs"
-    echo "  $0 --migrate            # Run database migrations"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
@@ -1430,52 +1137,6 @@ case "${1:-}" in
                 shift
                 ;;
         esac
-        ;;
-    --backup)
-        if [ ! -f "$COMPOSE_FILE" ]; then
-            error "No deployment found. Cannot create backup."
-        fi
-        # Source environment for backup
-        if [ -f "$ENV_FILE" ]; then
-            set -a
-            source "$ENV_FILE"
-            set +a
-        fi
-        log "💾 Starting backup process..."
-        create_backup "$2"
-        exit 0
-        ;;
-    --restore)
-        if [ -z "$2" ]; then
-            error "Backup name required. Use --list-backups to see available backups."
-        fi
-        log "🔄 Starting restore process..."
-        restore_backup "$2"
-        exit 0
-        ;;
-    --list-backups)
-        log "📋 Listing available backups..."
-        list_backups
-        exit 0
-        ;;
-    --cleanup-backups)
-        log "🧹 Starting backup cleanup..."
-        cleanup_backups "$2"
-        exit 0
-        ;;
-    --migrate)
-        if [ ! -f "$COMPOSE_FILE" ]; then
-            error "No deployment found. Cannot run migrations."
-        fi
-        # Source environment for migrations
-        if [ -f "$ENV_FILE" ]; then
-            set -a
-            source "$ENV_FILE"
-            set +a
-        fi
-        log "🔄 Starting database migrations..."
-        run_migrations
-        exit 0
         ;;
     --status)
         show_status
