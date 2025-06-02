@@ -435,49 +435,29 @@ collect_config() {
     info "Collecting configuration"
     echo
     
-    if [ "$LOCAL_MODE" = "true" ]; then
-        step "Local Development Configuration"
-        warn "Local mode - no SSL, localhost only"
-    else
-        step "Production Configuration"
-    fi
+    step "Production Configuration"
     echo
     
     # Domain Configuration
     echo "Domain Configuration:"
-    if [ "$LOCAL_MODE" = "true" ]; then
-        DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
-        if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="localhost"; fi
-        
-        # Auto-generate storage domain with option to change
-        local storage_default="localhost:9000"
-        local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
-        if [ -n "$existing_storage" ]; then
-            storage_default="$existing_storage"
-        fi
-        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
-        
-        ACME_EMAIL="admin@localhost"
-    else
-        DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
-        if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="tofupilot.example.com"; fi
-        
-        # Auto-generate storage domain based on main domain
-        local storage_default="storage.${DOMAIN_NAME}"
-        local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
-        if [ -n "$existing_storage" ]; then
-            storage_default="$existing_storage"
-        fi
-        STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
-        
-        # Auto-generate SSL email based on main domain  
-        local email_default="admin@${DOMAIN_NAME}"
-        local existing_email=$(get_env_value "ACME_EMAIL")
-        if [ -n "$existing_email" ]; then
-            email_default="$existing_email"
-        fi
-        ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "SSL certificate email" "$email_default" false)
+    DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
+    if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="tofupilot.example.com"; fi
+    
+    # Auto-generate storage domain based on main domain
+    local storage_default="storage.${DOMAIN_NAME}"
+    local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
+    if [ -n "$existing_storage" ]; then
+        storage_default="$existing_storage"
     fi
+    STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
+    
+    # Auto-generate SSL email based on main domain  
+    local email_default="admin@${DOMAIN_NAME}"
+    local existing_email=$(get_env_value "ACME_EMAIL")
+    if [ -n "$existing_email" ]; then
+        email_default="$existing_email"
+    fi
+    ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "SSL certificate email" "$email_default" false)
     
     echo
     echo "Security Configuration:"
@@ -724,32 +704,19 @@ Solutions:
 
 Then restart the deployment:
    docker compose down
-   ./deploy.sh --local"
+   bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
         fi
         
-        if [ "$LOCAL_MODE" = "false" ]; then
-            info "Checking SSL certificates..."
-            
-            # Instant check for HTTPS
-            if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                log "HTTPS accessible at https://${DOMAIN_NAME}"
-            else
-                warn "HTTPS not ready yet. SSL certificates may take a few minutes to generate."
-                info "Check later with: curl -I https://${DOMAIN_NAME}"
-                if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                    info "HTTP is working: http://${DOMAIN_NAME}"
-                fi
-            fi
+        info "Checking SSL certificates..."
+        
+        # Instant check for HTTPS
+        if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
+            log "HTTPS accessible at https://${DOMAIN_NAME}"
         else
-            info "Testing local connectivity..."
-            
-            # Instant check for local access
+            warn "HTTPS not ready yet. SSL certificates may take a few minutes to generate."
+            info "Check later with: curl -I https://${DOMAIN_NAME}"
             if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                log "Local access ready at http://${DOMAIN_NAME}"
-            elif curl -f -s -I "http://${DOMAIN_NAME}:3000" >/dev/null 2>&1; then
-                log "Local access ready at http://${DOMAIN_NAME}:3000"
-            else
-                warn "Local service not ready yet. Check later with: curl -I http://${DOMAIN_NAME}"
+                info "HTTP is working: http://${DOMAIN_NAME}"
             fi
         fi
     else
@@ -765,20 +732,13 @@ show_info() {
     echo "=================================="
     echo
     info "Your TofuPilot instance is available at:"
-    if [ "$LOCAL_MODE" = "true" ]; then
-        echo "  Main app: http://${DOMAIN_NAME}"
-        echo "  Storage:  http://${STORAGE_DOMAIN_NAME}"
-    else
-        echo "  Main app: https://${DOMAIN_NAME}"
-        echo "  Storage:  https://${STORAGE_DOMAIN_NAME}"
-    fi
+    echo "  Main app: https://${DOMAIN_NAME}"
+    echo "  Storage:  https://${STORAGE_DOMAIN_NAME}"
     echo
-    if [ "$LOCAL_MODE" = "false" ]; then
-        warn "Make sure your DNS is pointing:"
-        echo "  ${DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
-        echo "  ${STORAGE_DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
-        echo
-    fi
+    warn "Make sure your DNS is pointing:"
+    echo "  ${DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
+    echo "  ${STORAGE_DOMAIN_NAME} → $(curl -s ifconfig.me 2>/dev/null || echo "YOUR_SERVER_IP")"
+    echo
     info "Useful commands:"
     echo "  View logs:    docker compose logs -f"
     echo "  Stop:         docker compose down"
@@ -987,7 +947,7 @@ uninstall_tofupilot() {
     log "🎉 TofuPilot completely uninstalled!"
     echo
     echo "To reinstall TofuPilot, run:"
-    echo "  $0"
+    echo "  bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
     echo
 }
 
@@ -1000,7 +960,6 @@ usage() {
     echo
     echo "Main Commands:"
     echo "  (no options)            Fresh TofuPilot installation"
-    echo "  --local                 Local development setup (no SSL)"
     echo "  --allow-root            Allow running as root user (use with caution)"
     echo
     echo "Service Management:"
@@ -1015,9 +974,7 @@ usage() {
     echo
     echo "Examples:"
     echo "  $0                      # Fresh installation"
-    echo "  $0 --local              # Local development setup"
     echo "  $0 --allow-root         # Fresh installation as root user"
-    echo "  $0 --allow-root --local # Local setup as root user"
     echo ""
     echo "  $0 --status             # Check deployment status"
     echo "  $0 --logs app           # Show application logs"
@@ -1031,25 +988,13 @@ usage() {
 #----------------------------#
 
 # Initialize variables
-LOCAL_MODE="false"
 ALLOW_ROOT="false"
 
 # Parse command line arguments
 case "${1:-}" in
-    --local)
-        LOCAL_MODE="true"
-        shift
-        ;;
     --allow-root)
         ALLOW_ROOT="true"
         shift
-        # Check if there's a second argument
-        case "${1:-}" in
-            --local)
-                LOCAL_MODE="true"
-                shift
-                ;;
-        esac
         ;;
     --status)
         show_status
@@ -1090,13 +1035,8 @@ esac
 # Main installation flow
 echo
 echo "=========================================="
-if [ "$LOCAL_MODE" = "true" ]; then
-    step "TofuPilot Local Development Setup"
-    warn "Local mode - no SSL, localhost only"
-else
-    step "TofuPilot Production Deployment"
-    info "Full setup with SSL certificates"
-fi
+step "TofuPilot Production Deployment"
+info "Full setup with SSL certificates"
 echo "=========================================="
 echo
 
@@ -1126,14 +1066,9 @@ show_info
 echo
 log "Deployment complete"
 
-if [ "$LOCAL_MODE" = "false" ]; then
-    echo
-    echo "Next steps:"
-    echo "1. Point DNS to this server"
-    echo "2. Configure auth providers"
-    echo "3. Visit https://${DOMAIN_NAME}"
-else
-    echo
-    echo "Access: http://localhost"
-fi
+echo
+echo "Next steps:"
+echo "1. Point DNS to this server"
+echo "2. Configure auth providers"
+echo "3. Visit https://${DOMAIN_NAME}"
 
