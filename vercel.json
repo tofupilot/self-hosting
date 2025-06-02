@@ -1,0 +1,13 @@
+{
+  "headers": [
+    {
+      "source": "/install",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "text/x-shellscript"
+        }
+      ]
+    }
+  ]
+}
