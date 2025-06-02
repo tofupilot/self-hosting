@@ -573,7 +573,7 @@ collect_config() {
         fi
     fi
     
-    # Check if at least one auth method is configured
+    # Check if at least one auth method is configured (including existing SMTP)
     if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$existing_smtp" ]; then
         warn "No authentication method configured!"
         echo "TofuPilot requires at least one authentication method:"
@@ -581,10 +581,10 @@ collect_config() {
         echo "2. Microsoft Entra ID"
         echo "3. Email/SMTP (configured in next step)"
         echo
-        warn "You must configure at least Google OAuth or Microsoft Entra ID now, or SMTP email in the next step"
+        info "You can configure OAuth now or skip to configure SMTP email in the next step"
         echo
         
-        # Force at least one configuration
+        # Allow skipping to SMTP configuration
         while [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; do
             printf "Configure Google OAuth now? (y/N): " >&2
             read -r force_google
@@ -600,6 +600,13 @@ collect_config() {
                 AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID" false)
                 AUTH_MICROSOFT_ENTRA_ID_SECRET=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_SECRET" "Microsoft Entra ID Client Secret" true)
                 AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ISSUER" "Microsoft Entra ID Issuer URL" false)
+                break
+            fi
+            
+            printf "Skip OAuth and configure SMTP email instead? (y/N): " >&2
+            read -r skip_oauth
+            if [[ "$skip_oauth" =~ ^[Yy]$ ]]; then
+                info "Skipping OAuth - you must configure SMTP email in the next step"
                 break
             fi
             
