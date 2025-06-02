@@ -1254,9 +1254,21 @@ show_status() {
     echo "======================="
     echo
     
-    # Show docker-compose status
+    # Show docker-compose status (TofuPilot containers only)
     info "Docker Container Status:"
-    docker compose -f "$COMPOSE_FILE" ps
+    docker compose -f "$COMPOSE_FILE" ps | grep tofupilot
+    
+    info "Data Volumes:"
+    local volumes=$(docker system df -v 2>/dev/null | grep -E "(root_database-data|root_storage-data|root_traefik-acme)" | awk '{print $1 " " $3}')
+    if [ -n "$volumes" ]; then
+        echo "$volumes" | while read name size; do
+            case "$name" in
+                *database*) echo "  Database: $size" ;;
+                *storage*) echo "  Storage: $size" ;;
+                *traefik*) echo "  SSL: $size" ;;
+            esac
+        done
+    fi
     
     echo
     echo "Health Checks:"
@@ -1292,65 +1304,6 @@ show_status() {
     echo "URLs:"
     echo "  Main app: https://${DOMAIN_NAME:-localhost}"
     echo "  Storage:  https://${STORAGE_DOMAIN_NAME:-storage.localhost}"
-    
-    echo
-    echo "Data Volumes:"
-    info "Checking Docker volumes for data persistence..."
-    
-    # Try to get project name, fall back to common patterns
-    local project_name=""
-    if [ -f "$COMPOSE_FILE" ]; then
-        project_name=$(docker compose -f "$COMPOSE_FILE" config --project-name 2>/dev/null || echo "")
-    fi
-    
-    # If no project name found, detect from running containers
-    if [ -z "$project_name" ]; then
-        project_name=$(docker ps --format '{{.Names}}' | grep tofupilot | head -1 | cut -d- -f1 2>/dev/null || echo "")
-    fi
-    
-    # Last resort: common naming patterns
-    if [ -z "$project_name" ]; then
-        project_name="self-hosting"
-    fi
-    
-    # Check for volumes with different naming patterns
-    local db_volume=""
-    local storage_volume=""
-    local ssl_volume=""
-    
-    # Try project-based names first
-    db_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*database|database.*data)" | head -1 2>/dev/null || echo "")
-    storage_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*storage|storage.*data)" | head -1 2>/dev/null || echo "")
-    ssl_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*traefik|traefik.*acme)" | head -1 2>/dev/null || echo "")
-    
-    # Function to get size for a volume (handle whitespace properly)
-    get_volume_size() {
-        local vol_name="$1"
-        # Use docker system df and grep for exact volume name
-        local size=$(docker system df -v 2>/dev/null | grep "$vol_name" | awk '{print $NF}' | head -1)
-        if [ -n "$size" ] && [ "$size" != "0B" ]; then
-            echo "$size"
-        else
-            echo "empty"
-        fi
-    }
-    
-    # Show volumes with clean format
-    echo "  Active data volumes:"
-    if [ -n "$db_volume" ]; then
-        local db_size=$(get_volume_size "$db_volume")
-        echo "    📁 Database data: $db_size"
-    fi
-    
-    if [ -n "$storage_volume" ]; then
-        local storage_size=$(get_volume_size "$storage_volume")
-        echo "    📁 File storage: $storage_size"
-    fi
-    
-    if [ -n "$ssl_volume" ]; then
-        local ssl_size=$(get_volume_size "$ssl_volume")
-        echo "    📁 SSL certificates: $ssl_size"
-    fi
 }
 
 # Show logs
