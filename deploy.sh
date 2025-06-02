@@ -252,6 +252,12 @@ check_requirements() {
 # Create Docker Compose file (for curl deployments)
 create_compose_file() {
   log "Creating Docker Compose configuration..."
+  
+  # Remove existing compose file if it exists
+  if [ -f "$COMPOSE_FILE" ]; then
+    rm -f "$COMPOSE_FILE"
+    info "Removed existing docker-compose.yml file"
+  fi
 
   cat > "$COMPOSE_FILE" <<'EOF'
 
@@ -1091,8 +1097,3 @@ else
     echo "Access: http://localhost"
 fi
 
-# Cleanup: Remove docker-compose.yml file after deployment
-if [ -f "$COMPOSE_FILE" ]; then
-    rm -f "$COMPOSE_FILE"
-    info "Cleaned up docker-compose.yml file"
-fi
