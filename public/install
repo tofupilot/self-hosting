@@ -359,7 +359,7 @@ services:
 
   # Database
   tofupilot-database:
-    image: edgedb/edgedb:latest
+    image: geldata/gel:latest
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
@@ -450,7 +450,6 @@ EOF
 
 # Interactive configuration collection and validation
 collect_config() {
-    info "Initiating interactive configuration collection"
     
     # Domain Configuration
     echo "Domain Configuration:"
