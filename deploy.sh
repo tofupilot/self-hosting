@@ -1292,6 +1292,27 @@ show_status() {
     echo "URLs:"
     echo "  Main app: https://${DOMAIN_NAME:-localhost}"
     echo "  Storage:  https://${STORAGE_DOMAIN_NAME:-storage.localhost}"
+    
+    echo
+    echo "Data Volumes:"
+    info "Checking Docker volumes for data persistence..."
+    local project_name=$(docker compose config --project-name 2>/dev/null || echo "self-hosting")
+    echo "  Database: ${project_name}_database-data ($(docker volume ls -f name=${project_name}_database-data --format '{{.Size}}' 2>/dev/null || echo 'unknown size'))"
+    echo "  Storage:  ${project_name}_storage-data ($(docker volume ls -f name=${project_name}_storage-data --format '{{.Size}}' 2>/dev/null || echo 'unknown size'))"
+    if [ "$LOCAL_MODE" != "true" ]; then
+        echo "  SSL Certs: ${project_name}_traefik-acme ($(docker volume ls -f name=${project_name}_traefik-acme --format '{{.Size}}' 2>/dev/null || echo 'unknown size'))"
+    fi
+    
+    # Show all TofuPilot related volumes
+    local all_volumes=$(docker volume ls --format '{{.Name}}' | grep -E "(tofupilot|${project_name})" 2>/dev/null || true)
+    if [ -n "$all_volumes" ]; then
+        echo "  All related volumes:"
+        while IFS= read -r vol; do
+            if [ -n "$vol" ]; then
+                echo "    - $vol"
+            fi
+        done <<< "$all_volumes"
+    fi
 }
 
 # Show logs
