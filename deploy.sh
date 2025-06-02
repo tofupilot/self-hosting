@@ -254,7 +254,6 @@ create_compose_file() {
   log "Creating Docker Compose configuration..."
 
   cat > "$COMPOSE_FILE" <<'EOF'
-version: '3.8'
 
 services:
   # Reverse proxy with automatic SSL
@@ -263,16 +262,9 @@ services:
     container_name: tofupilot-traefik
     restart: unless-stopped
     command:
-      - "--api.dashboard=false"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
-      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
-      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
-      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "sh"
+      - "-c"
+      - "touch /acme.json && chmod 600 /acme.json && traefik --api.dashboard=false --providers.docker=true --providers.docker.exposedbydefault=false --entrypoints.web.address=:80 --entrypoints.websecure.address=:443 --certificatesresolvers.letsencrypt.acme.tlschallenge=true --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL} --certificatesresolvers.letsencrypt.acme.storage=/acme.json --entrypoints.web.http.redirections.entrypoint.to=websecure --entrypoints.web.http.redirections.entrypoint.scheme=https"
     ports:
       - "80:80"
       - "443:443"
