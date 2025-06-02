@@ -16,7 +16,6 @@ else
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
 
-CONFIG_FILE="$SCRIPT_DIR/.tofupilot.conf"
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
@@ -809,7 +808,7 @@ show_info() {
     info "Configuration files:"
     echo "  Docker Compose: $COMPOSE_FILE"
     echo "  Environment:    $ENV_FILE"
-    echo "  Config:         $CONFIG_FILE"
+    echo ""
     echo
     warn "Configure your authentication providers:"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
@@ -970,7 +969,7 @@ usage() {
     echo "  $0 --local              # Local development setup"
     echo "  $0 --allow-root         # Fresh installation as root user"
     echo "  $0 --allow-root --local # Local setup as root user"
-    echo "  $0 --update             # Update existing installation"
+    echo ""
     echo "  $0 --status             # Check deployment status"
     echo "  $0 --logs app           # Show application logs"
     echo
@@ -1057,12 +1056,6 @@ github_auth
 echo
 step "3/6 Configuration"
 collect_config
-
-# Load configuration
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
-    log "Configuration loaded"
-fi
 
 echo
 step "4/6 Deployment"
