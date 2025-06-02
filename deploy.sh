@@ -317,12 +317,12 @@ services:
       - GEL_CLIENT_TLS_SECURITY=${GEL_CLIENT_TLS_SECURITY}
       
       # Storage Configuration
-      - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
-      - AWS_SECRET_ACCESS_KEY=${MINIO_SECRET_KEY}
-      - STORAGE_EXTERNAL_ENDPOINT_URL=https://${STORAGE_DOMAIN_NAME}
-      - STORAGE_INTERNAL_ENDPOINT_URL=http://storage:9000
-      - BUCKET_NAME=tofupilot
-      - REGION=us-east-1
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+      - S3_ENDPOINT_URL_EXTERNAL=https://${STORAGE_DOMAIN_NAME}
+      - S3_ENDPOINT_URL_INTERNAL=http://storage:9000
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_REGION=${S3_REGION}
       
       # Email Configuration
       - SMTP_HOST=${SMTP_HOST:-}
@@ -360,8 +360,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
-      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY}
     volumes:
       - storage-data:/data
     labels:
@@ -412,8 +412,10 @@ GEL_PORT=${GEL_PORT}
 GEL_CLIENT_TLS_SECURITY=${GEL_CLIENT_TLS_SECURITY}
 
 # Storage Configuration
-MINIO_ACCESS_KEY=tofupilot
-MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
+S3_BUCKET_NAME=${S3_BUCKET_NAME}
+S3_REGION=${S3_REGION}
 
 # Email Configuration
 SMTP_HOST=${SMTP_HOST:-}
@@ -505,9 +507,17 @@ collect_config() {
         log "Using existing database password"
     fi
     
-    MINIO_SECRET_KEY=$(get_env_value "MINIO_SECRET_KEY")
-    if [ -z "$MINIO_SECRET_KEY" ]; then 
-        MINIO_SECRET_KEY=$(generate_password)
+    S3_ACCESS_KEY_ID="tofupilot"
+    S3_BUCKET_NAME="tofupilot"
+    S3_REGION="us-east-1"
+    
+    S3_SECRET_ACCESS_KEY=$(get_env_value "S3_SECRET_ACCESS_KEY")
+    # Fallback to legacy MINIO_SECRET_KEY for backward compatibility
+    if [ -z "$S3_SECRET_ACCESS_KEY" ]; then
+        S3_SECRET_ACCESS_KEY=$(get_env_value "MINIO_SECRET_KEY")
+    fi
+    if [ -z "$S3_SECRET_ACCESS_KEY" ]; then 
+        S3_SECRET_ACCESS_KEY=$(generate_password)
         log "Generated storage secret key"
     else
         log "Using existing storage secret key"
