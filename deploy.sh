@@ -1323,39 +1323,33 @@ show_status() {
     storage_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*storage|storage.*data)" | head -1 2>/dev/null || echo "")
     ssl_volume=$(docker volume ls --format '{{.Name}}' | grep -E "(${project_name}.*traefik|traefik.*acme)" | head -1 2>/dev/null || echo "")
     
-    # Show what we found
+    # Function to get size for a volume (handle whitespace properly)
+    get_volume_size() {
+        local vol_name="$1"
+        # Use docker system df and grep for exact volume name
+        local size=$(docker system df -v 2>/dev/null | grep "$vol_name" | awk '{print $NF}' | head -1)
+        if [ -n "$size" ] && [ "$size" != "0B" ]; then
+            echo "$size"
+        else
+            echo "empty"
+        fi
+    }
+    
+    # Show volumes with clean format
+    echo "  Active data volumes:"
     if [ -n "$db_volume" ]; then
-        local db_size=$(docker volume ls --format 'table {{.Name}}\t{{.Size}}' | grep "$db_volume" | awk '{print $2}' 2>/dev/null || echo "unknown")
-        echo "  Database: $db_volume ($db_size)"
-    else
-        echo "  Database: No database volume found"
+        local db_size=$(get_volume_size "$db_volume")
+        echo "    📁 Database data: $db_size"
     fi
     
     if [ -n "$storage_volume" ]; then
-        local storage_size=$(docker volume ls --format 'table {{.Name}}\t{{.Size}}' | grep "$storage_volume" | awk '{print $2}' 2>/dev/null || echo "unknown")
-        echo "  Storage:  $storage_volume ($storage_size)"
-    else
-        echo "  Storage:  No storage volume found"
+        local storage_size=$(get_volume_size "$storage_volume")
+        echo "    📁 File storage: $storage_size"
     fi
     
     if [ -n "$ssl_volume" ]; then
-        local ssl_size=$(docker volume ls --format 'table {{.Name}}\t{{.Size}}' | grep "$ssl_volume" | awk '{print $2}' 2>/dev/null || echo "unknown")
-        echo "  SSL Certs: $ssl_volume ($ssl_size)"
-    else
-        echo "  SSL Certs: No SSL volume found"
-    fi
-    
-    # Show all TofuPilot related volumes
-    echo "  All related volumes:"
-    local all_volumes=$(docker volume ls --format '{{.Name}}' | grep -E "(tofupilot|database|storage|traefik|acme)" 2>/dev/null || echo "")
-    if [ -n "$all_volumes" ]; then
-        while IFS= read -r vol; do
-            if [ -n "$vol" ]; then
-                echo "    - $vol"
-            fi
-        done <<< "$all_volumes"
-    else
-        echo "    - No TofuPilot volumes found"
+        local ssl_size=$(get_volume_size "$ssl_volume")
+        echo "    📁 SSL certificates: $ssl_size"
     fi
 }
 
