@@ -309,12 +309,12 @@ services:
       - AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
       
       # Database Configuration
-      - EDGEDB_USER=${EDGEDB_USER}
-      - EDGEDB_PASSWORD=${EDGEDB_PASSWORD}
-      - EDGEDB_DATABASE=${EDGEDB_DATABASE}
-      - EDGEDB_HOST=${EDGEDB_HOST}
-      - EDGEDB_PORT=${EDGEDB_PORT}
-      - EDGEDB_CLIENT_TLS_SECURITY=${EDGEDB_CLIENT_TLS_SECURITY}
+      - GEL_USER=${GEL_USER}
+      - GEL_PASSWORD=${GEL_PASSWORD}
+      - GEL_DATABASE=${GEL_DATABASE}
+      - GEL_HOST=${GEL_HOST}
+      - GEL_PORT=${GEL_PORT}
+      - GEL_CLIENT_TLS_SECURITY=${GEL_CLIENT_TLS_SECURITY}
       
       # Storage Configuration
       - AWS_ACCESS_KEY_ID=${MINIO_ACCESS_KEY}
@@ -343,11 +343,11 @@ services:
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - EDGEDB_USER=${EDGEDB_USER}
-      - EDGEDB_PASSWORD=${EDGEDB_PASSWORD}
-      - EDGEDB_DATABASE=${EDGEDB_DATABASE}
-      - EDGEDB_SERVER_TLS_CERT_MODE=generate_self_signed
-      - EDGEDB_SERVER_SECURITY=insecure_dev_mode
+      - GEL_USER=${GEL_USER}
+      - GEL_PASSWORD=${GEL_PASSWORD}
+      - GEL_DATABASE=${GEL_DATABASE}
+      - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
+      - GEL_SERVER_SECURITY=insecure_dev_mode
     volumes:
       - database-data:/var/lib/edgedb/data
     ports:
@@ -404,12 +404,12 @@ AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
 AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
 
 # Database Configuration
-EDGEDB_USER=${EDGEDB_USER}
-EDGEDB_PASSWORD=${EDGEDB_PASSWORD}
-EDGEDB_DATABASE=${EDGEDB_DATABASE}
-EDGEDB_HOST=${EDGEDB_HOST}
-EDGEDB_PORT=${EDGEDB_PORT}
-EDGEDB_CLIENT_TLS_SECURITY=${EDGEDB_CLIENT_TLS_SECURITY}
+GEL_USER=${GEL_USER}
+GEL_PASSWORD=${GEL_PASSWORD}
+GEL_DATABASE=${GEL_DATABASE}
+GEL_HOST=${GEL_HOST}
+GEL_PORT=${GEL_PORT}
+GEL_CLIENT_TLS_SECURITY=${GEL_CLIENT_TLS_SECURITY}
 
 # Storage Configuration
 MINIO_ACCESS_KEY=tofupilot
@@ -487,15 +487,19 @@ collect_config() {
         log "Using existing Auth secret"
     fi
     
-    EDGEDB_USER="edgedb"
-    EDGEDB_DATABASE="main"
-    EDGEDB_HOST="database"
-    EDGEDB_PORT="5656"
-    EDGEDB_CLIENT_TLS_SECURITY="insecure"
+    GEL_USER="edgedb"
+    GEL_DATABASE="main"
+    GEL_HOST="database"
+    GEL_PORT="5656"
+    GEL_CLIENT_TLS_SECURITY="insecure"
     
-    EDGEDB_PASSWORD=$(get_env_value "EDGEDB_PASSWORD")
-    if [ -z "$EDGEDB_PASSWORD" ]; then 
-        EDGEDB_PASSWORD=$(generate_password)
+    GEL_PASSWORD=$(get_env_value "GEL_PASSWORD")
+    # Fallback to legacy EDGEDB_PASSWORD for backward compatibility
+    if [ -z "$GEL_PASSWORD" ]; then
+        GEL_PASSWORD=$(get_env_value "EDGEDB_PASSWORD")
+    fi
+    if [ -z "$GEL_PASSWORD" ]; then 
+        GEL_PASSWORD=$(generate_password)
         log "Generated database password"
     else
         log "Using existing database password"
