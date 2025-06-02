@@ -1262,11 +1262,7 @@ show_status() {
     local volumes=$(docker system df -v 2>/dev/null | grep -E "(root_database-data|root_storage-data|root_traefik-acme)" | awk '{print $1 " " $3}')
     if [ -n "$volumes" ]; then
         echo "$volumes" | while read name size; do
-            case "$name" in
-                *database*) echo "  Database: $size" ;;
-                *storage*) echo "  Storage: $size" ;;
-                *traefik*) echo "  SSL: $size" ;;
-            esac
+            echo "  $name: $size"
         done
     fi
     
