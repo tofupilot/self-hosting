@@ -19,19 +19,19 @@ fi
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
-# Terminal color definitions for enhanced output formatting
+# Terminal color definitions using TofuPilot brand colors
 RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
+# Brand colors - warm tofu tones
+TOFU_COLOR_CREAM='\033[38;2;255;248;220m'  # Warm cream color
+TOFU_COLOR_GOLD='\033[38;2;255;215;0m'     # Golden yellow
+TOFU_COLOR_BROWN='\033[38;2;139;69;19m'    # Warm brown
+TOFU_COLOR_BLUE='\033[38;2;70;130;180m'    # Aviation blue
 
 # Corporate branding display
 show_banner() {
-    # Colors for the tofu art
-    local yellow="\033[33m"  # Yellow for the plane
-    local blue="\033[34m"    # Blue for the cap border
-    local reset="\033[0m"    # Reset color
-    
     echo
-    echo -e " ${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
-    echo " [•ᴗ•] TofuPilot Self-Hosting Installer"
+    echo -e " ${TOFU_COLOR_BLUE}╭${NC} ${TOFU_COLOR_GOLD}✈${NC} ${TOFU_COLOR_BLUE}╮${NC}"
+    echo -e " ${TOFU_COLOR_CREAM}[•ᴗ•] TofuPilot Self-Hosting Installer${NC}"
     echo
 }
 
@@ -39,32 +39,19 @@ show_banner() {
 #         Functions          #
 #----------------------------#
 log(){ echo -e "${GREEN}✓ $1${NC}"; }
-warn(){ echo -e "${YELLOW}! $1${NC}"; }
+warn(){ echo -e "${TOFU_COLOR_GOLD}! $1${NC}"; }
 error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
-info(){ echo -e "${CYAN}→ $1${NC}"; }
+info(){ echo -e "${TOFU_COLOR_BLUE}→ $1${NC}"; }
 step(){ 
     echo
-    echo -e "${CYAN}>>> STEP $1${NC}"
-    echo -e "${CYAN}-----------------------------${NC}"
+    echo -e "${TOFU_COLOR_BROWN}>>> STEP $1${NC}"
+    echo -e "${TOFU_COLOR_BROWN}-----------------------------${NC}"
     echo
 }
 
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
-# Progress indicator for long-running operations
-progress_bar() {
-    local current=$1
-    local total=$2
-    local width=30
-    local percentage=$((current * 100 / total))
-    local completed=$((current * width / total))
-    
-    printf "\r["
-    for ((i=0; i<completed; i++)); do printf "█"; done
-    for ((i=completed; i<width; i++)); do printf "░"; done
-    printf "] %d%%" $percentage
-}
 
 # Environment variable retrieval utility
 get_env_value() {
@@ -769,26 +756,6 @@ deploy() {
     
     log "Services started"
     
-    info "Checking database startup..."
-    
-    # Wait for database
-    local db_ready=false
-    for i in {1..30}; do
-        if docker compose -f "$COMPOSE_FILE" ps database 2>/dev/null | grep -q "Up"; then
-            db_ready=true
-            break
-        fi
-        progress_bar $i 30
-        sleep 2
-    done
-    echo
-    
-    if [ "$db_ready" = "true" ]; then
-        log "Database is ready"
-    else
-        warn "Database startup is taking longer than expected. This is normal for first-time setup."
-    fi
-    
     # Create storage bucket
     info "Setting up storage bucket..."
     sleep 5
@@ -860,9 +827,9 @@ Then restart the deployment:
 # Show deployment information
 show_info() {
     echo
-    echo "=================================="
-    log "🎉 TofuPilot deployment completed successfully!"
-    echo "=================================="
+    echo "========================================="
+    echo "    TofuPilot Deployment Complete!    "
+    echo "========================================="
     echo
     info "Your TofuPilot instance is accessible at:"
     echo "  • Main app: https://${DOMAIN_NAME}"
@@ -1017,7 +984,7 @@ start_services() {
 uninstall_tofupilot() {
     echo
     echo "=========================================="
-    echo -e "${RED}⚠️  TofuPilot Complete Uninstall${NC}"
+    echo -e "${RED}WARNING: TofuPilot Complete Uninstall${NC}"
     echo "=========================================="
     echo
     warn "This will completely remove:"
@@ -1073,7 +1040,7 @@ uninstall_tofupilot() {
     log "Images removed"
     
     echo
-    log "🎉 TofuPilot completely uninstalled!"
+    log "TofuPilot completely uninstalled!"
     echo
     echo "To reinstall TofuPilot, run:"
     echo "  bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
