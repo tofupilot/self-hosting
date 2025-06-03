@@ -597,12 +597,21 @@ EOF
 }
 
 # Generate application environment configuration
+# Generate application environment configuration
 create_env_file() {
-    info "Creating environment file..."
+    info "Creating environment file (backed up, merged into a new file)..."
     
-    # Backup existing .env
+    # If the user already had an .env, back it up to a timestamped file
     if [ -f "$ENV_FILE" ]; then
-        cp "$ENV_FILE" "${ENV_FILE}.backup.$(date +%s)"
+        TIMESTAMP=$(date +%s)
+        BACKUP_ENV="${ENV_FILE}.backup.${TIMESTAMP}"
+        cp "$ENV_FILE" "$BACKUP_ENV"
+        log "Backed up existing .env to ${BACKUP_ENV}"
+        # Now point ENV_FILE at the backup so we merge into it
+        ENV_FILE="$BACKUP_ENV"
+    else
+        # No previous .env existed: we’ll just write directly to $ENV_FILE
+        log "No existing .env found; creating new ENV_FILE at ${ENV_FILE}"
     fi
     
     cat > "$ENV_FILE" <<EOF
@@ -645,8 +654,10 @@ EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
 EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
 EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
 EOF
-    log "Environment file created"
+
+    log "Merged environment written to ${ENV_FILE}"
 }
+
 
 # Interactive configuration collection and validation
 # Interactive configuration collection and validation
