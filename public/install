@@ -141,6 +141,60 @@ prompt_env_with_default() {
     echo "$user_input"
 }
 
+# Test SMTP connection
+test_smtp_connection() {
+    local host="$1"
+    local port="$2"
+    local user="$3"
+    local password="$4"
+    
+    info "Testing SMTP connection to ${host}:${port}..."
+    
+    # Test basic connectivity
+    if ! command_exists nc && ! command_exists telnet; then
+        warn "Cannot test SMTP connection - nc/telnet not available"
+        return 0
+    fi
+    
+    # Test port connectivity
+    if command_exists nc; then
+        if echo "quit" | nc -w 3 "$host" "$port" >/dev/null 2>&1; then
+            log "SMTP server connectivity"
+        else
+            warn "Cannot connect to SMTP server ${host}:${port}"
+            return 1
+        fi
+    elif command_exists telnet; then
+        if echo "quit" | timeout 3 telnet "$host" "$port" >/dev/null 2>&1; then
+            log "SMTP server connectivity"
+        else
+            warn "Cannot connect to SMTP server ${host}:${port}"
+            return 1
+        fi
+    fi
+    
+    # If we have authentication details, test with a simple SMTP command
+    if [ -n "$user" ] && [ -n "$password" ] && command_exists openssl; then
+        local smtp_test=$(timeout 10 openssl s_client -connect "$host:$port" -starttls smtp -quiet 2>/dev/null <<EOF
+EHLO localhost
+AUTH LOGIN
+$(echo -n "$user" | base64)
+$(echo -n "$password" | base64)
+QUIT
+EOF
+)
+        if echo "$smtp_test" | grep -q "Authentication successful\|235"; then
+            log "SMTP authentication successful"
+        elif echo "$smtp_test" | grep -q "530\|535\|Authentication failed"; then
+            warn "SMTP authentication failed - please verify credentials"
+        else
+            log "SMTP server accessible (auth not tested)"
+        fi
+    fi
+    
+    return 0
+}
+
 # GitHub Authentication and Registry Access Verification
 github_auth() {
     info "GitHub authentication required"
