@@ -134,12 +134,7 @@ check_all_required_vars() {
     local required_vars=(
         "DOMAIN_NAME"
         "STORAGE_DOMAIN_NAME"
-        "AUTH_SECRET"
-        "GEL_USER"
-        "GEL_PASSWORD"
-        "GEL_DATABASE"
-        "S3_ACCESS_KEY_ID"
-        "S3_SECRET_ACCESS_KEY"
+        "ACME_EMAIL"
     )
 
     local missing=false
@@ -654,6 +649,7 @@ EOF
 }
 
 # Interactive configuration collection and validation
+# Interactive configuration collection and validation
 collect_config() {
 
     # Check if .env exists and has all required variables
@@ -701,54 +697,42 @@ collect_config() {
     echo
     echo "Security Configuration:"
     info "Generating secure passwords automatically..."
-    
-    # Auto-generate security variables, only use existing if they exist
-    AUTH_SECRET=$(get_env_value "AUTH_SECRET")
-    if [ -z "$AUTH_SECRET" ]; then 
-        AUTH_SECRET=$(generate_password)
-        log "Generated Auth secret"
-    else
-        log "Using existing Auth secret"
-    fi
-    
+
+    # ────────────────────────────────────────────────────────────────────────────────
+    # Always generate AUTH_SECRET here—ignore any AUTH_SECRET in .env
+    # ────────────────────────────────────────────────────────────────────────────────
+    AUTH_SECRET=$(generate_password)
+    log "Generated Auth secret (ignoring any user‐provided value)"
+
+    # Database defaults
     GEL_USER="edgedb"
     GEL_DATABASE="main"
     GEL_HOST="tofupilot-database"
     GEL_PORT="5656"
     GEL_CLIENT_TLS_SECURITY="insecure"
     
-    GEL_PASSWORD=$(get_env_value "GEL_PASSWORD")
-    # Fallback to legacy EDGEDB_PASSWORD for backward compatibility
-    if [ -z "$GEL_PASSWORD" ]; then
-        GEL_PASSWORD=$(get_env_value "EDGEDB_PASSWORD")
-    fi
-    if [ -z "$GEL_PASSWORD" ]; then 
-        GEL_PASSWORD=$(generate_password)
-        log "Generated database password"
-    else
-        log "Using existing database password"
-    fi
-    
+    # ────────────────────────────────────────────────────────────────────────────────
+    # Always generate GEL_PASSWORD here—ignore any GEL_PASSWORD in .env
+    # ────────────────────────────────────────────────────────────────────────────────
+    GEL_PASSWORD=$(generate_password)
+    log "Generated database password (ignoring any user‐provided value)"
+
+    # Storage defaults
     S3_ACCESS_KEY_ID="tofupilot"
     S3_BUCKET_NAME="tofupilot"
     S3_REGION="us-east-1"
     
-    S3_SECRET_ACCESS_KEY=$(get_env_value "S3_SECRET_ACCESS_KEY")
-    if [ -z "$S3_SECRET_ACCESS_KEY" ]; then
-        S3_SECRET_ACCESS_KEY=$(get_env_value "MINIO_SECRET_KEY")
-    fi
-    if [ -z "$S3_SECRET_ACCESS_KEY" ]; then 
-        S3_SECRET_ACCESS_KEY=$(generate_password)
-        log "Generated storage secret key"
-    else
-        log "Using existing storage secret key"
-    fi
-    
+    # ────────────────────────────────────────────────────────────────────────────────
+    # Always generate S3_SECRET_ACCESS_KEY here—ignore any user‐provided value
+    # ────────────────────────────────────────────────────────────────────────────────
+    S3_SECRET_ACCESS_KEY=$(generate_password)
+    log "Generated storage secret key (ignoring any user‐provided value)"
+
     echo
     echo "Authentication Configuration (required - choose at least one):"
     info "TofuPilot requires at least one authentication method"
     
-# Google OAuth Configuration
+    # Google OAuth Configuration
     local configure_google="y"
     local existing_google_id=$(get_env_value "AUTH_GOOGLE_ID")
     if [ -n "$existing_google_id" ]; then
@@ -824,7 +808,6 @@ collect_config() {
     # Smart default for email from address
     local email_default="tofupilot@${DOMAIN_NAME}"
     local existing_email_from=$(get_env_value "EMAIL_FROM_AUTH")
-    # Fallback to legacy EMAIL_FROM for backward compatibility
     if [ -z "$existing_email_from" ]; then
         existing_email_from=$(get_env_value "EMAIL_FROM")
     fi
@@ -835,13 +818,11 @@ collect_config() {
     # SMTP Configuration
     local configure_smtp="y"
     local existing_smtp_host=$(get_env_value "EMAIL_SMTP_HOST")
-    # Fallback to legacy SMTP_HOST for backward compatibility
     if [ -z "$existing_smtp_host" ]; then
         existing_smtp_host=$(get_env_value "SMTP_HOST")
     fi
     
     if [ "$smtp_required" = "true" ]; then
-        # SMTP is required, just ask for configuration
         configure_smtp="y"
     elif [ -n "$existing_smtp_host" ]; then
         printf "Configure SMTP email? (existing: ${existing_smtp_host}) [Y/n]: " >&2
@@ -859,7 +840,6 @@ collect_config() {
     
     if [ "$configure_smtp" != "n" ]; then
         EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname" false)
-        # Fallback to legacy SMTP_HOST for backward compatibility
         if [ -z "$EMAIL_SMTP_HOST" ]; then
             EMAIL_SMTP_HOST="$existing_smtp_host"
         fi
@@ -869,7 +849,6 @@ collect_config() {
         
         if [ -n "$EMAIL_SMTP_HOST" ]; then
             EMAIL_SMTP_PORT=$(prompt_env "EMAIL_SMTP_PORT" "SMTP port" false)
-            # Fallback to legacy SMTP_PORT for backward compatibility
             if [ -z "$EMAIL_SMTP_PORT" ]; then
                 EMAIL_SMTP_PORT=$(get_env_value "SMTP_PORT")
             fi
@@ -878,16 +857,15 @@ collect_config() {
             fi
             
             EMAIL_SMTP_USER=$(prompt_env "EMAIL_SMTP_USER" "SMTP username" false)
-            # Fallback to legacy SMTP_USER for backward compatibility
             if [ -z "$EMAIL_SMTP_USER" ]; then
                 EMAIL_SMTP_USER=$(get_env_value "SMTP_USER")
             fi
             
             EMAIL_SMTP_PASSWORD=$(prompt_env "EMAIL_SMTP_PASSWORD" "SMTP password" true)
-            # Fallback to legacy SMTP_PASSWORD for backward compatibility
             if [ -z "$EMAIL_SMTP_PASSWORD" ]; then
                 EMAIL_SMTP_PASSWORD=$(get_env_value "SMTP_PASSWORD")
             fi
+            
             EMAIL_FROM_AUTH=$(prompt_env_with_default "EMAIL_FROM_AUTH" "From email address" "$email_default" false)
             
             # Test SMTP connection right after configuration
@@ -916,6 +894,7 @@ collect_config() {
     log "Configuration complete"
 }
 
+
 # Deploy the application
 deploy() {
     log "Starting deployment process..."
@@ -924,14 +903,14 @@ deploy() {
     # Create configuration files
     info "Generating deployment configuration files..."
     create_compose_file
-    if [ -z "${CUSTOM_ENV_FILE:-}" ]; then
-        create_env_file
-    else
-        log "Skipping create_env_file because --env-file was provided"
-    fi
-    
+
+    #
+    # ──► ALWAYS regenerate/overwrite .env so that any missing variables
+    #    (passwords, secrets, defaults, etc.) get filled in.
+    #
+    create_env_file
+
     info "Downloading container images from registry..."
-    
     if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
         log "Images downloaded"
     else
@@ -979,17 +958,15 @@ deploy() {
         log "All services running"
         
         if docker compose -f "$COMPOSE_FILE" logs app 2>/dev/null | grep -q "exec format error"; then
-            error "TofuPilot app failed with 'exec format error' - architecture compatibility issue.
+            error "TofuPilot app failed with 'exec format error' – architecture compatibility issue.
 
-This happens on ARM64 systems (Apple Silicon Macs) when Docker can't emulate AMD64 images.
+This happens on ARM64 systems (Apple Silicon Macs) when Docker can’t emulate AMD64 images.
 
 Solutions:
 1. **Docker Desktop (Mac)**: Enable 'Use Rosetta for x86/amd64 emulation on Apple Silicon'
-   - Docker Desktop → Settings → General → Use Rosetta...
-   
+   - Docker Desktop → Settings → General → Use Rosetta…
 2. **Install QEMU emulators**: 
    docker run --rm --privileged tonistiigi/binfmt --install all
-   
 3. **Alternative**: Contact TofuPilot for ARM64-native images
 
 Then restart the deployment:
@@ -1368,6 +1345,7 @@ echo
 step "3/6: CONFIGURATION"
 if [ -n "$CUSTOM_ENV_FILE" ]; then
     log "Using provided .env file; skipping interactive configuration."
+    collect_config
 else
     collect_config
 fi
