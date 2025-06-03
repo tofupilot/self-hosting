@@ -19,19 +19,17 @@ fi
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
-# Terminal color definitions using TofuPilot brand colors
+# Terminal color definitions
 RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
-# Brand colors - warm tofu tones
-TOFU_COLOR_CREAM='\033[38;2;255;248;220m'  # Warm cream color
-TOFU_COLOR_GOLD='\033[38;2;255;215;0m'     # Golden yellow
-TOFU_COLOR_BROWN='\033[38;2;139;69;19m'    # Warm brown
-TOFU_COLOR_BLUE='\033[38;2;70;130;180m'    # Aviation blue
+# Brand colors
+BRAND_BLUE='\033[38;2;59;130;246m'    # Blue-500
+BRAND_GOLD='\033[38;2;234;179;8m'     # Yellow-500
 
 # Corporate branding display
 show_banner() {
     echo
-    echo -e " ${TOFU_COLOR_BLUE}╭${NC} ${TOFU_COLOR_GOLD}✈${NC} ${TOFU_COLOR_BLUE}╮${NC}"
-    echo -e " ${TOFU_COLOR_CREAM}[•ᴗ•] TofuPilot Self-Hosting Installer${NC}"
+    echo -e " ${BRAND_BLUE}╭${NC} ${BRAND_GOLD}✈${NC} ${BRAND_BLUE}╮${NC}"
+    echo -e " ${NC}[•ᴗ•] TofuPilot Self-Hosting Installer${NC}"
     echo
 }
 
@@ -39,13 +37,13 @@ show_banner() {
 #         Functions          #
 #----------------------------#
 log(){ echo -e "${GREEN}✓ $1${NC}"; }
-warn(){ echo -e "${TOFU_COLOR_GOLD}! $1${NC}"; }
+warn(){ echo -e "${BRAND_GOLD}! $1${NC}"; }
 error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
-info(){ echo -e "${TOFU_COLOR_BLUE}→ $1${NC}"; }
+info(){ echo -e "${BRAND_BLUE}→ $1${NC}"; }
 step(){ 
     echo
-    echo -e "${TOFU_COLOR_BROWN}>>> STEP $1${NC}"
-    echo -e "${TOFU_COLOR_BROWN}-----------------------------${NC}"
+    echo -e "${BRAND_GOLD}>>> STEP $1${NC}"
+    echo -e "${BRAND_GOLD}-----------------------------${NC}"
     echo
 }
 
