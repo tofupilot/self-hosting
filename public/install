@@ -30,7 +30,7 @@ show_banner() {
     local reset="\033[0m"    # Reset color
     
     echo
-    echo -e "${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
+    echo -e "$ {blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
     echo " [•ᴗ•] TofuPilot Self-Hosting Installer"
     echo
 }
@@ -574,19 +574,63 @@ collect_config() {
     echo "Authentication Configuration (required - choose at least one):"
     info "TofuPilot requires at least one authentication method"
     
-    # Initialize variables with existing values as defaults
-    AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID (leave empty to skip)" false)
-    if [ -n "$AUTH_GOOGLE_ID" ]; then
-        AUTH_GOOGLE_SECRET=$(prompt_env "AUTH_GOOGLE_SECRET" "Google OAuth Client Secret" true)
+    # Google OAuth Configuration
+    local configure_google="y"
+    local existing_google_id=$(get_env_value "AUTH_GOOGLE_ID")
+    if [ -n "$existing_google_id" ]; then
+        printf "Configure Google OAuth? (existing: ${existing_google_id}) [Y/n]: " >&2
+        read configure_google
+        if [[ "$configure_google" =~ ^[Nn]$ ]]; then
+            configure_google="n"
+        fi
     else
+        printf "Configure Google OAuth? [y/N]: " >&2
+        read configure_google
+        if [[ ! "$configure_google" =~ ^[Yy]$ ]]; then
+            configure_google="n"
+        fi
+    fi
+    
+    if [ "$configure_google" != "n" ]; then
+        AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID" false)
+        if [ -n "$AUTH_GOOGLE_ID" ]; then
+            AUTH_GOOGLE_SECRET=$(prompt_env "AUTH_GOOGLE_SECRET" "Google OAuth Client Secret" true)
+        else
+            AUTH_GOOGLE_SECRET=""
+        fi
+    else
+        AUTH_GOOGLE_ID=""
         AUTH_GOOGLE_SECRET=""
     fi
     
-    AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID (leave empty to skip)" false)
-    if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
-        AUTH_MICROSOFT_ENTRA_ID_SECRET=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_SECRET" "Microsoft Entra ID Client Secret" true)
-        AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ISSUER" "Microsoft Entra ID Issuer URL" false)
+    # Microsoft Entra ID Configuration
+    local configure_microsoft="y"
+    local existing_microsoft_id=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")
+    if [ -n "$existing_microsoft_id" ]; then
+        printf "Configure Microsoft Entra ID? (existing: ${existing_microsoft_id}) [Y/n]: " >&2
+        read configure_microsoft
+        if [[ "$configure_microsoft" =~ ^[Nn]$ ]]; then
+            configure_microsoft="n"
+        fi
     else
+        printf "Configure Microsoft Entra ID? [y/N]: " >&2
+        read configure_microsoft
+        if [[ ! "$configure_microsoft" =~ ^[Yy]$ ]]; then
+            configure_microsoft="n"
+        fi
+    fi
+    
+    if [ "$configure_microsoft" != "n" ]; then
+        AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID" false)
+        if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
+            AUTH_MICROSOFT_ENTRA_ID_SECRET=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_SECRET" "Microsoft Entra ID Client Secret" true)
+            AUTH_MICROSOFT_ENTRA_ID_ISSUER=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ISSUER" "Microsoft Entra ID Issuer URL" false)
+        else
+            AUTH_MICROSOFT_ENTRA_ID_SECRET=""
+            AUTH_MICROSOFT_ENTRA_ID_ISSUER=""
+        fi
+    else
+        AUTH_MICROSOFT_ENTRA_ID_ID=""
         AUTH_MICROSOFT_ENTRA_ID_SECRET=""
         AUTH_MICROSOFT_ENTRA_ID_ISSUER=""
     fi
@@ -614,43 +658,41 @@ collect_config() {
         email_default="$existing_email_from"
     fi
     
+    # SMTP Configuration
+    local configure_smtp="y"
+    local existing_smtp_host=$(get_env_value "EMAIL_SMTP_HOST")
+    # Fallback to legacy SMTP_HOST for backward compatibility
+    if [ -z "$existing_smtp_host" ]; then
+        existing_smtp_host=$(get_env_value "SMTP_HOST")
+    fi
+    
     if [ "$smtp_required" = "true" ]; then
+        # SMTP is required, just ask for configuration
+        configure_smtp="y"
+    elif [ -n "$existing_smtp_host" ]; then
+        printf "Configure SMTP email? (existing: ${existing_smtp_host}) [Y/n]: " >&2
+        read configure_smtp
+        if [[ "$configure_smtp" =~ ^[Nn]$ ]]; then
+            configure_smtp="n"
+        fi
+    else
+        printf "Configure SMTP email? [y/N]: " >&2
+        read configure_smtp
+        if [[ ! "$configure_smtp" =~ ^[Yy]$ ]]; then
+            configure_smtp="n"
+        fi
+    fi
+    
+    if [ "$configure_smtp" != "n" ]; then
         EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname" false)
         # Fallback to legacy SMTP_HOST for backward compatibility
         if [ -z "$EMAIL_SMTP_HOST" ]; then
-            EMAIL_SMTP_HOST=$(get_env_value "SMTP_HOST")
+            EMAIL_SMTP_HOST="$existing_smtp_host"
         fi
-        if [ -z "$EMAIL_SMTP_HOST" ]; then
+        if [ -z "$EMAIL_SMTP_HOST" ] && [ "$smtp_required" = "true" ]; then
             error "SMTP server hostname is required when no OAuth methods are configured"
         fi
         
-        EMAIL_SMTP_PORT=$(prompt_env_with_default "EMAIL_SMTP_PORT" "SMTP port" "587" false)
-        # Fallback to legacy SMTP_PORT for backward compatibility
-        if [ -z "$EMAIL_SMTP_PORT" ]; then
-            EMAIL_SMTP_PORT=$(get_env_value "SMTP_PORT")
-        fi
-        if [ -z "$EMAIL_SMTP_PORT" ]; then
-            EMAIL_SMTP_PORT="587"
-        fi
-        
-        EMAIL_SMTP_USER=$(prompt_env "EMAIL_SMTP_USER" "SMTP username" false)
-        # Fallback to legacy SMTP_USER for backward compatibility
-        if [ -z "$EMAIL_SMTP_USER" ]; then
-            EMAIL_SMTP_USER=$(get_env_value "SMTP_USER")
-        fi
-        
-        EMAIL_SMTP_PASSWORD=$(prompt_env "EMAIL_SMTP_PASSWORD" "SMTP password" true)
-        # Fallback to legacy SMTP_PASSWORD for backward compatibility
-        if [ -z "$EMAIL_SMTP_PASSWORD" ]; then
-            EMAIL_SMTP_PASSWORD=$(get_env_value "SMTP_PASSWORD")
-        fi
-        EMAIL_FROM_AUTH=$(prompt_env_with_default "EMAIL_FROM_AUTH" "From email address" "$email_default" false)
-    else
-        EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname (leave empty to skip)" false)
-        # Fallback to legacy SMTP_HOST for backward compatibility
-        if [ -z "$EMAIL_SMTP_HOST" ]; then
-            EMAIL_SMTP_HOST=$(get_env_value "SMTP_HOST")
-        fi
         if [ -n "$EMAIL_SMTP_HOST" ]; then
             EMAIL_SMTP_PORT=$(prompt_env_with_default "EMAIL_SMTP_PORT" "SMTP port" "587" false)
             # Fallback to legacy SMTP_PORT for backward compatibility
@@ -673,12 +715,22 @@ collect_config() {
                 EMAIL_SMTP_PASSWORD=$(get_env_value "SMTP_PASSWORD")
             fi
             EMAIL_FROM_AUTH=$(prompt_env_with_default "EMAIL_FROM_AUTH" "From email address" "$email_default" false)
+            
+            # Test SMTP connection right after configuration
+            echo
+            test_smtp_connection "$EMAIL_SMTP_HOST" "$EMAIL_SMTP_PORT" "$EMAIL_SMTP_USER" "$EMAIL_SMTP_PASSWORD"
         else
             EMAIL_SMTP_PORT="587"
             EMAIL_SMTP_USER=""
             EMAIL_SMTP_PASSWORD=""
             EMAIL_FROM_AUTH=""
         fi
+    else
+        EMAIL_SMTP_HOST=""
+        EMAIL_SMTP_PORT="587"
+        EMAIL_SMTP_USER=""
+        EMAIL_SMTP_PASSWORD=""
+        EMAIL_FROM_AUTH=""
     fi
     
     # Final validation
@@ -717,7 +769,7 @@ deploy() {
     
     log "Services started"
     
-    info "Performing service readiness validation..."
+    info "Checking database startup..."
     
     # Wait for database
     local db_ready=false
@@ -732,21 +784,21 @@ deploy() {
     echo
     
     if [ "$db_ready" = "true" ]; then
-        log "Database container is running"
+        log "Database is ready"
     else
         warn "Database startup is taking longer than expected. This is normal for first-time setup."
     fi
     
     # Quick app check
-    info "Validating application service status..."
+    info "Checking application status..."
     if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
-        log "Application container is running"
+        log "Application is running"
     else
         warn "Application initialization in progress. Monitor with: docker compose logs app"
     fi
     
     # Check if services are running
-    info "Verifying service status..."
+    info "Verifying all services..."
     
     if docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
         log "All services running"
@@ -771,11 +823,11 @@ Then restart the deployment:
    bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
         fi
         
-        info "Checking SSL certificates..."
+        info "Testing HTTPS connectivity..."
         
         # Instant check for HTTPS
         if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
-            log "HTTPS accessible at https://${DOMAIN_NAME}"
+            log "HTTPS is accessible at https://${DOMAIN_NAME}"
         else
             warn "HTTPS not ready yet. SSL certificates may take a few minutes to generate."
             info "Check later with: curl -I https://${DOMAIN_NAME}"
@@ -861,7 +913,7 @@ show_status() {
     fi
     
     # Check if main app is responding
-    info "Testing main application connectivity..."
+    info "Testing main application..."
     if curl -f -s -I "https://${DOMAIN_NAME:-localhost}" >/dev/null 2>&1; then
         echo "✓ Main application: healthy (https://${DOMAIN_NAME:-localhost})"
     elif curl -f -s -I "http://${DOMAIN_NAME:-localhost}" >/dev/null 2>&1; then
@@ -871,7 +923,7 @@ show_status() {
     fi
     
     # Check storage
-    info "Testing storage connectivity..."
+    info "Testing storage service..."
     if curl -f -s -I "https://${STORAGE_DOMAIN_NAME:-storage.localhost}" >/dev/null 2>&1; then
         echo "✓ Storage: healthy (https://${STORAGE_DOMAIN_NAME:-storage.localhost})"
     elif curl -f -s -I "http://${STORAGE_DOMAIN_NAME:-storage.localhost}" >/dev/null 2>&1; then
