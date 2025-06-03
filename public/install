@@ -694,7 +694,7 @@ collect_config() {
         fi
         
         if [ -n "$EMAIL_SMTP_HOST" ]; then
-            EMAIL_SMTP_PORT=$(prompt_env_with_default "EMAIL_SMTP_PORT" "SMTP port" "587" false)
+            EMAIL_SMTP_PORT=$(prompt_env "EMAIL_SMTP_PORT" "SMTP port" false)
             # Fallback to legacy SMTP_PORT for backward compatibility
             if [ -z "$EMAIL_SMTP_PORT" ]; then
                 EMAIL_SMTP_PORT=$(get_env_value "SMTP_PORT")
