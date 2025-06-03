@@ -19,6 +19,9 @@ fi
 COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
 ENV_FILE="$SCRIPT_DIR/.env"
 
+# Options
+CUSTOM_ENV_FILE=""
+
 # Terminal color definitions
 RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
 # Brand colors
@@ -126,6 +129,46 @@ prompt_env_with_default() {
     echo "$user_input"
 }
 
+# Check all required variables (updated for S3_* and EMAIL_SMTP_HOST)
+check_all_required_vars() {
+    local required_vars=(
+        "DOMAIN_NAME"
+        "STORAGE_DOMAIN_NAME"
+        "AUTH_SECRET"
+        "GEL_USER"
+        "GEL_PASSWORD"
+        "GEL_DATABASE"
+        "S3_ACCESS_KEY_ID"
+        "S3_SECRET_ACCESS_KEY"
+    )
+
+    local missing=false
+    for var in "${required_vars[@]}"; do
+        if [ -z "$(get_env_value "$var")" ]; then
+            missing=true
+            break
+        fi
+    done
+
+    # Check if at least one auth method is configured:
+    #   • Google OAuth (AUTH_GOOGLE_ID)
+    #   • Microsoft Entra ID (AUTH_MICROSOFT_ENTRA_ID_ID)
+    #   • SMTP email (EMAIL_SMTP_HOST)
+    local has_auth=false
+    if [ -n "$(get_env_value "AUTH_GOOGLE_ID")" ] || \
+       [ -n "$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")" ] || \
+       [ -n "$(get_env_value "EMAIL_SMTP_HOST")" ]; then
+        has_auth=true
+    fi
+
+    if [ "$missing" = "false" ] && [ "$has_auth" = "true" ]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+
 # Test SMTP connection
 test_smtp_connection() {
     local host="$1"
@@ -182,24 +225,55 @@ EOF
 
 # GitHub Authentication and Registry Access Verification
 github_auth() {
+    # If GITHUB_USERNAME and GITHUB_TOKEN are already set (e.g. from --env-file), do non-interactive login:
+    if [ -n "${GITHUB_USERNAME:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+        log "Using GITHUB_USERNAME/GITHUB_TOKEN from .env; skipping interactive GitHub prompt"
+
+        # 1) Validate token against GitHub API
+        if curl -s -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user | grep -q '"login"' ; then
+            github_user=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user \
+                            | grep '"login"' | cut -d'"' -f4)
+            log "GitHub API access (user: ${github_user})"
+        else
+            error "The GITHUB_TOKEN in .env failed GitHub API authentication."
+        fi
+
+        # 2) Docker login to ghcr.io
+        if echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_USERNAME}" --password-stdin >/dev/null 2>&1; then
+            log "Docker registry login to ghcr.io (user: ${GITHUB_USERNAME})"
+        else
+            error "Docker login to ghcr.io failed using GITHUB_USERNAME/GITHUB_TOKEN."
+        fi
+
+        # 3) Test pulling TofuPilot image
+        if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
+            log "TofuPilot image access confirmed"
+        else
+            error "Cannot pull ghcr.io/tofupilot/tofupilot:latest. Check your GHCR permissions."
+        fi
+
+        return
+    fi
+
+    # Otherwise, perform interactive prompt:
     info "GitHub authentication required"
     echo "A GitHub Personal Access Token with 'read:packages' permission is required"
     echo "Generate token at: https://github.com/settings/tokens"
     echo
-    
+
     echo -n "GitHub Username: "
     read github_username
     echo -n "GitHub Personal Access Token: "
     read -s github_token
     echo
-    
+
     if [ -z "$github_username" ] || [ -z "$github_token" ]; then
         error "Both username and personal access token are required"
     fi
-    
+
     echo
     info "Validating GitHub credentials and permissions..."
-    
+
     # Test GitHub API
     if curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep -q "login"; then
         github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
@@ -207,33 +281,35 @@ github_auth() {
     else
         error "GitHub API authentication failed. Please verify your token has the correct permissions"
     fi
-    
+
     # Test package access
     if curl -s -H "Authorization: token $github_token" "https://api.github.com/user/packages?package_type=container" >/dev/null; then
         log "Package registry access"
     else
         warn "Package access limited"
     fi
-    
+
     # Clean Docker auth
     docker logout >/dev/null 2>&1 || true
-    
+
     # Test Docker login
     if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin >/dev/null 2>&1; then
         log "Docker registry login"
     else
         error "GitHub Container Registry authentication failed. Please verify your credentials"
     fi
-    
+
     # Test image pull
     if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
         log "TofuPilot image access"
     else
         error "Unable to access TofuPilot container image. Please verify your repository access permissions"
     fi
-    
+
     log "Authentication complete"
 }
+
+
 
 # System Prerequisites and Dependency Validation
 check_requirements() {
@@ -305,7 +381,7 @@ check_requirements() {
         log "Architecture (AMD64)"
     fi
 }
-
+# Generate Docker Compose configuration for containerized deployment
 # Generate Docker Compose configuration for containerized deployment
 create_compose_file() {
   log "Creating Docker Compose configuration..."
@@ -319,11 +395,35 @@ create_compose_file() {
   cat > "$COMPOSE_FILE" <<'EOF'
 
 services:
-  # Reverse proxy with automatic SSL
+  # Reverse proxy (Traefik)
   tofupilot-proxy:
+    platform: linux/amd64
     image: traefik:v3.0
     container_name: tofupilot-proxy
     restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+EOF
+
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+    cat >> "$COMPOSE_FILE" <<EOF
+      - ${SSL_CERT_PATH}:/certs/tls.crt:ro
+      - ${SSL_KEY_PATH}:/certs/tls.key:ro
+      - ./traefik-tls.yml:/etc/traefik/dynamic/tls.yml:ro
+    command:
+      - "--api.dashboard=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+EOF
+  else
+    cat >> "$COMPOSE_FILE" <<EOF
+      - tofupilot-proxy-acme:/data
     command:
       - "--api.dashboard=false"
       - "--providers.docker=true"
@@ -335,17 +435,19 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+EOF
+  fi
+
+  cat >> "$COMPOSE_FILE" <<EOF
     ports:
       - "80:80"
       - "443:443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - tofupilot-proxy-acme:/data
     environment:
       - ACME_EMAIL=${ACME_EMAIL}
 
   # TofuPilot Application
   tofupilot-app:
+    platform: linux/amd64
     image: ghcr.io/tofupilot/tofupilot:latest
     container_name: tofupilot-app
     restart: unless-stopped
@@ -389,13 +491,27 @@ services:
       - EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.tofupilot-app.rule=Host(`${DOMAIN_NAME}`)"
+      - "traefik.http.routers.tofupilot-app.rule=Host(\`${DOMAIN_NAME}\`)"
       - "traefik.http.routers.tofupilot-app.entrypoints=websecure"
+EOF
+
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+    cat >> "$COMPOSE_FILE" <<EOF
+      - "traefik.http.routers.tofupilot-app.tls=true"
+      - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
+EOF
+  else
+    cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls.certresolver=letsencrypt"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
+EOF
+  fi
+
+  cat >> "$COMPOSE_FILE" <<'EOF'
 
   # Database
   tofupilot-database:
+    platform: linux/amd64
     image: geldata/gel:latest
     container_name: tofupilot-database
     restart: unless-stopped
@@ -412,6 +528,7 @@ services:
 
   # Object Storage (MinIO)
   tofupilot-storage:
+    platform: linux/amd64
     image: minio/minio:latest
     container_name: tofupilot-storage
     restart: unless-stopped
@@ -425,16 +542,63 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.tofupilot-storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
       - "traefik.http.routers.tofupilot-storage.entrypoints=websecure"
+EOF
+
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+    cat >> "$COMPOSE_FILE" <<EOF
+      - "traefik.http.routers.tofupilot-storage.tls=true"
+      - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
+EOF
+  else
+    cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
+EOF
+  fi
+
+  cat >> "$COMPOSE_FILE" <<'EOF'
 
 volumes:
   tofupilot-database-data:
   tofupilot-storage-data:
-  tofupilot-proxy-acme:
 EOF
 
+  if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
+    cat >> "$COMPOSE_FILE" <<'EOF'
+  tofupilot-proxy-acme:
+EOF
+  fi
+
+  # Create TLS configuration file for custom certificates
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+    create_traefik_tls_config
+  fi
+
   log "Docker Compose file created"
+}
+
+# Create Traefik TLS configuration file for custom certificates
+create_traefik_tls_config() {
+  local tls_config_file="$SCRIPT_DIR/traefik-tls.yml"
+  
+  log "Creating Traefik TLS configuration..."
+  
+  cat > "$tls_config_file" <<EOF
+# TLS Configuration for Custom Certificates
+tls:
+  certificates:
+    - certFile: /certs/tls.crt
+      keyFile: /certs/tls.key
+      stores:
+        - default
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /certs/tls.crt
+        keyFile: /certs/tls.key
+EOF
+  
+  log "TLS configuration file created at $tls_config_file"
 }
 
 # Generate application environment configuration
@@ -451,6 +615,11 @@ create_env_file() {
 DOMAIN_NAME=${DOMAIN_NAME}
 STORAGE_DOMAIN_NAME=${STORAGE_DOMAIN_NAME}
 ACME_EMAIL=${ACME_EMAIL}
+
+# SSL Configuration
+SSL_MODE=${SSL_MODE:-letsencrypt}
+SSL_CERT_PATH=${SSL_CERT_PATH:-}
+SSL_KEY_PATH=${SSL_KEY_PATH:-}
 
 # Authentication Configuration
 AUTH_SECRET=${AUTH_SECRET}
@@ -486,6 +655,13 @@ EOF
 
 # Interactive configuration collection and validation
 collect_config() {
+
+    # Check if .env exists and has all required variables
+    if [ -f "$ENV_FILE" ] && check_all_required_vars; then
+        info ".env file found with all required variables. Using existing configuration."
+        set -a; source "$ENV_FILE"; set +a
+        return
+    fi
     
     # Domain Configuration
     echo "Domain Configuration:"
@@ -508,6 +684,20 @@ collect_config() {
     fi
     ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "SSL certificate email" "$email_default" false)
     
+    echo
+    echo "SSL Configuration:"
+    info "Specify SSL mode (letsencrypt or custom)"
+    SSL_MODE=$(prompt_env_with_default "SSL_MODE" "SSL mode" "letsencrypt" false)
+    
+    if [ "$SSL_MODE" = "custom" ]; then
+      SSL_CERT_PATH=$(prompt_env "SSL_CERT_PATH" "Path to SSL certificate file" false)
+      SSL_KEY_PATH=$(prompt_env "SSL_KEY_PATH" "Path to SSL key file" false)
+      if [ -z "$SSL_CERT_PATH" ] || [ -z "$SSL_KEY_PATH" ]; then
+        error "Both SSL_CERT_PATH and SSL_KEY_PATH must be specified in custom mode"
+      fi
+      log "Custom SSL enabled"
+    fi
+
     echo
     echo "Security Configuration:"
     info "Generating secure passwords automatically..."
@@ -544,7 +734,6 @@ collect_config() {
     S3_REGION="us-east-1"
     
     S3_SECRET_ACCESS_KEY=$(get_env_value "S3_SECRET_ACCESS_KEY")
-    # Fallback to legacy MINIO_SECRET_KEY for backward compatibility
     if [ -z "$S3_SECRET_ACCESS_KEY" ]; then
         S3_SECRET_ACCESS_KEY=$(get_env_value "MINIO_SECRET_KEY")
     fi
@@ -559,7 +748,7 @@ collect_config() {
     echo "Authentication Configuration (required - choose at least one):"
     info "TofuPilot requires at least one authentication method"
     
-    # Google OAuth Configuration
+# Google OAuth Configuration
     local configure_google="y"
     local existing_google_id=$(get_env_value "AUTH_GOOGLE_ID")
     if [ -n "$existing_google_id" ]; then
@@ -735,7 +924,11 @@ deploy() {
     # Create configuration files
     info "Generating deployment configuration files..."
     create_compose_file
-    create_env_file
+    if [ -z "${CUSTOM_ENV_FILE:-}" ]; then
+        create_env_file
+    else
+        log "Skipping create_env_file because --env-file was provided"
+    fi
     
     info "Downloading container images from registry..."
     
@@ -785,7 +978,6 @@ deploy() {
     if docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
         log "All services running"
         
-        # Check for exec format errors in app container
         if docker compose -f "$COMPOSE_FILE" logs app 2>/dev/null | grep -q "exec format error"; then
             error "TofuPilot app failed with 'exec format error' - architecture compatibility issue.
 
@@ -1055,6 +1247,7 @@ usage() {
     echo "Main Commands:"
     echo "  (no options)            Fresh TofuPilot installation"
     echo "  --allow-root            Allow running as root user (use with caution)"
+    echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
     echo
     echo "Service Management:"
     echo "  --status                Show service status and health"
@@ -1069,7 +1262,8 @@ usage() {
     echo "Examples:"
     echo "  curl -sSL <url> | bash                    # Fresh installation"
     echo "  curl -sSL <url> | bash -s -- --allow-root # Fresh installation as root"
-    echo ""
+    echo "  curl -sSL <url> | bash -s -- --env-file /path/to/custom.env # Use existing env"
+    echo
     echo "  curl -sSL <url> | bash -s -- --status    # Check deployment status"
     echo "  curl -sSL <url> | bash -s -- --logs app  # Show application logs"
     echo "  curl -sSL <url> | bash -s -- --uninstall # Completely remove TofuPilot"
@@ -1088,46 +1282,78 @@ ALLOW_ROOT="false"
 show_banner
 
 # Parse command line arguments
-case "${1:-}" in
-    --allow-root)
-        ALLOW_ROOT="true"
-        shift
-        ;;
-    --status)
-        show_status
-        exit 0
-        ;;
-    --logs)
-        show_logs "$2"
-        exit 0
-        ;;
-    --restart)
-        restart_services "$2"
-        exit 0
-        ;;
-    --stop)
-        stop_services
-        exit 0
-        ;;
-    --start)
-        start_services
-        exit 0
-        ;;
-    --uninstall)
-        uninstall_tofupilot
-        exit 0
-        ;;
-    --help)
-        usage
-        exit 0
-        ;;
-    "")
-        # Continue with installation
-        ;;
-    *)
-        error "Unknown option: $1. Use --help for usage information."
-        ;;
-esac
+while [ $# -gt 0 ]; do
+    case "${1:-}" in
+        --allow-root)
+            ALLOW_ROOT="true"
+            shift
+            ;;
+        --env-file)
+            shift
+            CUSTOM_ENV_FILE="$1"
+            [ ! -f "$CUSTOM_ENV_FILE" ] && error "Specified env file not found: $CUSTOM_ENV_FILE"
+            ENV_FILE="$CUSTOM_ENV_FILE"
+            info "Using custom env file: $ENV_FILE"
+
+            if ! check_all_required_vars; then
+                error "Custom env file is missing required variables or authentication settings."
+            fi
+
+            set -a
+            source "$ENV_FILE"
+            set +a
+            log "Loaded custom environment from $ENV_FILE"
+
+            shift
+            ;;
+
+
+        --show-live-logs)
+            SHOW_LIVE_LOGS="true"
+            shift
+            ;;
+        --update) 
+            [ ! -f "$COMPOSE_FILE" ] && error "No deployment found. Cannot update."
+            [ -f "$ENV_FILE" ] && set -a && source "$ENV_FILE" && set +a
+            log "🔄 Starting update process..."
+            deploy
+            exit 0
+            ;;
+        --status)
+            show_status
+            exit 0
+            ;;
+        --logs)
+            show_logs "$2"
+            exit 0
+            ;;
+        --restart)
+            restart_services "$2"
+            exit 0
+            ;;
+        --stop)
+            stop_services
+            exit 0
+            ;;
+        --start)
+            start_services
+            exit 0
+            ;;
+        --uninstall)
+            uninstall_tofupilot
+            exit 0
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+        "")
+            ;;
+        *)
+            error "Unknown option: $1. Use --help for usage information."
+            ;;
+    esac
+done
 
 # Main installation flow
 
@@ -1140,7 +1366,11 @@ github_auth
 
 echo
 step "3/6: CONFIGURATION"
-collect_config
+if [ -n "$CUSTOM_ENV_FILE" ]; then
+    log "Using provided .env file; skipping interactive configuration."
+else
+    collect_config
+fi
 
 echo
 step "4/6: DEPLOYMENT"
@@ -1153,3 +1383,22 @@ sleep 2
 step "6/6: COMPLETE"
 show_info
 
+if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
+    echo -e "${YELLOW}! If you are deploying on a cloud VM (AWS, GCP, Azure, etc.), make sure to:${NC}"
+    echo -e "${YELLOW}  - Open inbound ports 80 (HTTP) and 443 (HTTPS) in your firewall/security group${NC}"
+    echo -e "${YELLOW}  - Point your DNS records to this server's IP address${NC}"
+    echo
+    echo "Quick links:"
+    echo "  AWS:   https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
+    echo "  GCP:   https://cloud.google.com/vpc/docs/using-firewalls"
+    echo "  Azure: https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview"
+fi
+
+if [ "$SHOW_LIVE_LOGS" = "true" ]; then
+    echo
+    info "Showing live logs (press Ctrl+C to exit)..."
+    echo
+    docker compose -f "$COMPOSE_FILE" logs -f
+fi
+
+echo
