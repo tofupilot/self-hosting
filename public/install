@@ -369,7 +369,7 @@ services:
       - tofupilot-storage
     environment:
       # Domain Configuration
-      - NEXT_PUBLIC_DOMAIN_NAME=${DOMAIN_NAME}
+      - SELF_HOSTED_APP_URL=https://${DOMAIN_NAME}
       
       # Authentication Configuration
       - AUTH_SECRET=${AUTH_SECRET}
