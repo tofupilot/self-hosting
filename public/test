@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+
+# Config
+TRACK_URL="https://tofupilot.sh/api/track"
+EVENT="test_shell_error"
+DISTINCT_ID="test-machine-001"
+
+# Fake error data
+ERROR_MESSAGE="Simulated failure during docker check"
+STACK_TRACE="test-posthog.sh: line 12: docker: command not found"
+
+# Send to PostHog proxy
+curl -s -X POST "$TRACK_URL" \
+  -H "Content-Type: application/json" \
+  -d @- <<EOF
+{
+  "event": "$EVENT",
+  "distinct_id": "$DISTINCT_ID",
+  "is_exception": true,
+  "fingerprint": "docker_missing_group",
+  "properties": {
+    "message": "$ERROR_MESSAGE",
+    "type": "DemoError",
+    "stack": "$STACK_TRACE",
+    "script": "test-posthog.sh"
+  }
+}
+EOF
