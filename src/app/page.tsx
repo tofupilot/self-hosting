@@ -1,19 +1,8 @@
-"use client"
-
-import { useState } from "react"
 import Link from "next/link"
-import { Copy, Check } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import { CopyButton } from "./copy-button"
 
-export default function TofuPilotShLanding() {
-  const [copied, setCopied] = useState(false)
+export default function Page() {
   const installCommand = "curl -fsSL https://tofupilot.sh/install | bash"
-
-  const copyToClipboard = async () => {
-    await navigator.clipboard.writeText(installCommand)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
 
   return (
     <div className="min-h-screen bg-black text-lime-400 font-mono p-4 md:p-8 flex items-center justify-center">
@@ -34,14 +23,7 @@ export default function TofuPilotShLanding() {
 
             <div className="bg-zinc-900 rounded p-3 flex items-center justify-between">
               <code className="text-white">$ {installCommand}</code>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={copyToClipboard}
-                className="text-zinc-400 hover:text-white hover:bg-zinc-800"
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </Button>
+              <CopyButton text={installCommand} />
             </div>
 
             <div className="text-zinc-400 text-sm">Deploy TofuPilot on your own infrastructure with one command.</div>
