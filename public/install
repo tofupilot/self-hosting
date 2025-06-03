@@ -30,7 +30,7 @@ show_banner() {
     local reset="\033[0m"    # Reset color
     
     echo
-    echo -e "$ {blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
+    echo -e " ${blue}╭${reset} ${yellow}✈${reset} ${blue}╮${reset}"
     echo " [•ᴗ•] TofuPilot Self-Hosting Installer"
     echo
 }
