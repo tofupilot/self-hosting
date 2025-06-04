@@ -232,24 +232,23 @@ verify_image_access() {
 
 # GitHub Authentication and Registry Access Verification (Development)
 github_auth() {
-    # If GITHUB_USERNAME and GITHUB_TOKEN are already set (e.g. from --env-file), do non-interactive login:
-    if [ -n "${GITHUB_USERNAME:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
-        log "Using GITHUB_USERNAME/GITHUB_TOKEN from .env; skipping interactive GitHub prompt"
+    # If GITHUB_TOKEN is already set (e.g. from --env-file), do non-interactive login:
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+        log "Using GITHUB_TOKEN from .env; skipping interactive GitHub prompt"
 
-        # 1) Validate token against GitHub API
-        if curl -s -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user | grep -q '"login"' ; then
-            github_user=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user \
-                            | grep '"login"' | cut -d'"' -f4)
+        # 1) Validate token against GitHub API and get username
+        github_user=$(curl -s -H "Authorization: token ${GITHUB_TOKEN}" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
+        if [ -n "$github_user" ]; then
             log "GitHub API access (user: ${github_user})"
         else
             error "The GITHUB_TOKEN in .env failed GitHub API authentication."
         fi
 
-        # 2) Docker login to ghcr.io
-        if echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "${GITHUB_USERNAME}" --password-stdin >/dev/null 2>&1; then
-            log "Docker registry login to ghcr.io (user: ${GITHUB_USERNAME})"
+        # 2) Docker login to ghcr.io using the retrieved username
+        if echo "${GITHUB_TOKEN}" | docker login ghcr.io -u "$github_user" --password-stdin >/dev/null 2>&1; then
+            log "Docker registry login to ghcr.io (user: ${github_user})"
         else
-            error "Docker login to ghcr.io failed using GITHUB_USERNAME/GITHUB_TOKEN."
+            error "Docker login to ghcr.io failed using GITHUB_TOKEN."
         fi
 
         # 3) Test pulling TofuPilot development image
@@ -268,22 +267,20 @@ github_auth() {
     echo "Generate token at: https://github.com/settings/tokens"
     echo
 
-    echo -n "GitHub Username: "
-    read github_username
     echo -n "GitHub Personal Access Token: "
     read -s github_token
     echo
 
-    if [ -z "$github_username" ] || [ -z "$github_token" ]; then
-        error "Both username and personal access token are required"
+    if [ -z "$github_token" ]; then
+        error "Personal access token is required"
     fi
 
     echo
     info "Validating GitHub credentials and permissions..."
 
-    # Test GitHub API
-    if curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep -q "login"; then
-        github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
+    # Test GitHub API and get username
+    github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
+    if [ -n "$github_user" ]; then
         log "GitHub API access ($github_user)"
     else
         error "GitHub API authentication failed. Please verify your token has the correct permissions"
@@ -299,8 +296,8 @@ github_auth() {
     # Clean Docker auth
     docker logout >/dev/null 2>&1 || true
 
-    # Test Docker login
-    if echo "$github_token" | docker login ghcr.io -u "$github_username" --password-stdin >/dev/null 2>&1; then
+    # Test Docker login using the retrieved username
+    if echo "$github_token" | docker login ghcr.io -u "$github_user" --password-stdin >/dev/null 2>&1; then
         log "Docker registry login"
     else
         error "GitHub Container Registry authentication failed. Please verify your credentials"
