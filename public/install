@@ -310,15 +310,6 @@ github_auth() {
 check_requirements() {
     info "Performing system requirements validation"
     
-    # Root check
-    if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "false" ]; then
-        error "Execution as root user is not recommended. Use --allow-root flag if administrative privileges are required"
-    fi
-    
-    if [ "$EUID" -eq 0 ] && [ "$ALLOW_ROOT" = "true" ]; then
-        warn "Administrative execution detected. This may result in file ownership conflicts"
-    fi
-    
     # OS check
     if ! command_exists apt; then
         error "This deployment requires Ubuntu or Debian Linux with APT package manager"
@@ -1234,7 +1225,7 @@ usage() {
     echo
     echo "Main Commands:"
     echo "  (no options)            Fresh TofuPilot installation"
-    echo "  --allow-root            Allow running as root user (use with caution)"
+    echo ""
     echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
     echo
     echo "Service Management:"
@@ -1249,7 +1240,7 @@ usage() {
     echo
     echo "Examples:"
     echo "  curl -sSL <url> | bash                    # Fresh installation"
-    echo "  curl -sSL <url> | bash -s -- --allow-root # Fresh installation as root"
+    echo ""
     echo "  curl -sSL <url> | bash -s -- --env-file /path/to/custom.env # Use existing env"
     echo
     echo "  curl -sSL <url> | bash -s -- --status    # Check deployment status"
@@ -1264,7 +1255,6 @@ usage() {
 #----------------------------#
 
 # Initialize variables
-ALLOW_ROOT="false"
 
 # Show banner for all operations
 show_banner
@@ -1272,10 +1262,6 @@ show_banner
 # Parse command line arguments
 while [ $# -gt 0 ]; do
     case "${1:-}" in
-        --allow-root)
-            ALLOW_ROOT="true"
-            shift
-            ;;
         --env-file)
             shift
             CUSTOM_ENV_FILE="$1"
