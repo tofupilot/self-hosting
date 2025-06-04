@@ -45,8 +45,8 @@ error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
 info(){ echo -e "${BRAND_BLUE}→ $1${NC}"; }
 step(){ 
     echo
-    echo -e "${BRAND_GOLD}>>> STEP $1${NC}"
-    echo -e "${BRAND_GOLD}-----------------------------${NC}"
+    echo -e "${BRAND_GOLD}step $1${NC}"
+    echo -e "${BRAND_GOLD}─────────────────────────────────────────────${NC}"
     echo
 }
 
@@ -1030,18 +1030,6 @@ Then restart the deployment:
    bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
         fi
         
-        info "Testing HTTPS connectivity..."
-        
-        # Instant check for HTTPS
-        if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
-            log "HTTPS is accessible at https://${DOMAIN_NAME}"
-        else
-            warn "HTTPS not ready yet. SSL certificates may take a few minutes to generate."
-            info "Check later with: curl -I https://${DOMAIN_NAME}"
-            if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                info "HTTP is working: http://${DOMAIN_NAME}"
-            fi
-        fi
     else
         error "Some services failed to start. Check logs with: docker compose logs"
     fi
@@ -1073,7 +1061,8 @@ show_info() {
     echo
     info "Next steps:"
     echo "  1. Complete authentication provider setup above"
-    echo "  2. Access your TofuPilot instance at https://${DOMAIN_NAME}"
+    echo "  2. If on cloud VM: Open ports 80/443 and point DNS to this server"
+    echo "  3. Access your TofuPilot instance at https://${DOMAIN_NAME}"
     echo
     info "Administrative commands:"
     echo "  • View logs:    docker compose logs -f"
@@ -1390,11 +1379,11 @@ done
 
 # Main installation flow
 
-step "1/6: PRE-FLIGHT CHECKS"
+step "1/5: pre-flight checks"
 check_requirements
 
 echo
-step "2/6: IMAGE ACCESS VERIFICATION"
+step "2/5: image access verification"
 if [ "$DEV_MODE" = "true" ]; then
     info "Development mode enabled - using private repository"
     github_auth
@@ -1404,7 +1393,7 @@ else
 fi
 
 echo
-step "3/6: CONFIGURATION"
+step "3/5: configuration"
 if [ -n "$CUSTOM_ENV_FILE" ]; then
     log "Using provided .env file; skipping interactive configuration."
     collect_config
@@ -1413,26 +1402,12 @@ else
 fi
 
 echo
-step "4/6: DEPLOYMENT"
+step "4/5: deployment"
 deploy
 
-step "5/6: VERIFICATION"
-info "Verifying deployment status..."
-sleep 2
-
-step "6/6: COMPLETE"
+step "5/5: complete"
 show_info
 
-if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
-    echo -e "${YELLOW}! If you are deploying on a cloud VM (AWS, GCP, Azure, etc.), make sure to:${NC}"
-    echo -e "${YELLOW}  - Open inbound ports 80 (HTTP) and 443 (HTTPS) in your firewall/security group${NC}"
-    echo -e "${YELLOW}  - Point your DNS records to this server's IP address${NC}"
-    echo
-    echo "Quick links:"
-    echo "  AWS:   https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
-    echo "  GCP:   https://cloud.google.com/vpc/docs/using-firewalls"
-    echo "  Azure: https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview"
-fi
 
 if [ "$SHOW_LIVE_LOGS" = "true" ]; then
     echo
