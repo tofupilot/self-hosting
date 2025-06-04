@@ -908,6 +908,13 @@ volumes:
   tofupilot-storage-data:
 EOF
 
+  # Add ACME volume if using Let's Encrypt
+  if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
+    cat >> "$COMPOSE_FILE" <<EOF
+  tofupilot-proxy-acme:
+EOF
+  fi
+
   # Add networks section
   cat >> "$COMPOSE_FILE" <<'EOF'
 
@@ -915,12 +922,6 @@ networks:
   tofupilot:
     driver: bridge
 EOF
-
-  if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
-    cat >> "$COMPOSE_FILE" <<EOF
-  tofupilot-proxy-acme:
-EOF
-  fi
 
   # Create TLS configuration file for custom certificates
   if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
