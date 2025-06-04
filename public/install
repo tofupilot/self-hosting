@@ -152,7 +152,7 @@ check_all_required_vars() {
     local has_auth=false
     if [ -n "$(get_env_value "AUTH_GOOGLE_ID")" ] || \
        [ -n "$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")" ] || \
-       [ -n "$(get_env_value "EMAIL_SMTP_HOST")" ]; then
+       [ -n "$(get_env_value "SMTP_HOST")" ]; then
         has_auth=true
     fi
 
@@ -279,7 +279,7 @@ github_auth() {
     info "Validating GitHub credentials and permissions..."
 
     # Test GitHub API and get username
-    github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
+        github_user=$(curl -s -H "Authorization: token $github_token" https://api.github.com/user | grep '"login"' | cut -d'"' -f4)
     if [ -n "$github_user" ]; then
         log "GitHub API access ($github_user)"
     else
@@ -612,22 +612,25 @@ EOF
 # Generate application environment configuration
 # Generate application environment configuration
 create_env_file() {
-    info "Creating environment file (backed up, merged into a new file)..."
+    local FINAL_ENV_FILE="$SCRIPT_DIR/.env"
     
-    # If the user already had an .env, back it up to a timestamped file
-    if [ -f "$ENV_FILE" ]; then
-        TIMESTAMP=$(date +%s)
-        BACKUP_ENV="${ENV_FILE}.backup.${TIMESTAMP}"
-        cp "$ENV_FILE" "$BACKUP_ENV"
-        log "Backed up existing .env to ${BACKUP_ENV}"
-        # Now point ENV_FILE at the backup so we merge into it
-        ENV_FILE="$BACKUP_ENV"
+    info "Creating final environment file..."
+    
+    # If a backup was created, we need to write to the original .env location
+    if [[ "$ENV_FILE" == *.backup.* ]]; then
+        info "Writing final configuration to $FINAL_ENV_FILE"
     else
-        # No previous .env existed: we’ll just write directly to $ENV_FILE
-        log "No existing .env found; creating new ENV_FILE at ${ENV_FILE}"
+        # Backup existing .env if it exists and we're not already working with a backup
+        if [ -f "$FINAL_ENV_FILE" ] && [ "$ENV_FILE" != "$FINAL_ENV_FILE" ]; then
+            TIMESTAMP=$(date +%s)
+            BACKUP_ENV="${FINAL_ENV_FILE}.backup.${TIMESTAMP}"
+            cp "$FINAL_ENV_FILE" "$BACKUP_ENV"
+            log "Backed up existing .env to ${BACKUP_ENV}"
+        fi
     fi
     
-    cat > "$ENV_FILE" <<EOF
+    # Write the complete configuration with ALL variables (user-provided + generated)
+    cat > "$FINAL_ENV_FILE" <<EOF
 # Domain Configuration
 DOMAIN_NAME=${DOMAIN_NAME}
 STORAGE_DOMAIN_NAME=${STORAGE_DOMAIN_NAME}
@@ -666,28 +669,75 @@ EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
 EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
 EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
 EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
+
+# GitHub Configuration (if provided)
+GITHUB_USERNAME=${GITHUB_USERNAME:-}
+GITHUB_TOKEN=${GITHUB_TOKEN:-}
 EOF
 
-    log "Merged environment written to ${ENV_FILE}"
+    # Update ENV_FILE to point to the final file for Docker Compose
+    ENV_FILE="$FINAL_ENV_FILE"
+    
+    log "Complete environment configuration written to ${FINAL_ENV_FILE}"
 }
 
+# =============================================================================
+# FIXES FOR collect_config() function - around line 520
+# =============================================================================
 
-# Interactive configuration collection and validation
 # Interactive configuration collection and validation
 collect_config() {
-
-    # Check if .env exists and has all required variables
+    # 1) If a .env exists and contains at least DOMAIN_NAME, STORAGE_DOMAIN_NAME, ACME_EMAIL,
+    #    and one of the three auth methods, then we source it and skip directly to secret‐generation.
     if [ -f "$ENV_FILE" ] && check_all_required_vars; then
         info ".env file found with all required variables. Using existing configuration."
-        set -a; source "$ENV_FILE"; set +a
+        set -a
+        source "$ENV_FILE"
+        set +a
+
+        # PRESERVE existing secrets for existing deployments, generate only if missing
+        if [ -z "${AUTH_SECRET:-}" ]; then
+            AUTH_SECRET=$(generate_password)
+            log "Generated Auth secret"
+        else
+            log "Using existing Auth secret"
+        fi
+
+        GEL_USER="edgedb"
+        GEL_DATABASE="main"
+        GEL_HOST="tofupilot-database"
+        GEL_PORT="5656"
+        GEL_CLIENT_TLS_SECURITY="insecure"
+        
+        if [ -z "${GEL_PASSWORD:-}" ]; then
+            GEL_PASSWORD=$(generate_password)
+            log "Generated database password"
+        else
+            log "Using existing database password"
+        fi
+
+        # Storage defaults
+        S3_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID:-tofupilot}"
+        S3_BUCKET_NAME="${S3_BUCKET_NAME:-tofupilot}"
+        S3_REGION="${S3_REGION:-us-east-1}"
+        
+        if [ -z "${S3_SECRET_ACCESS_KEY:-}" ]; then
+            S3_SECRET_ACCESS_KEY=$(generate_password)
+            log "Generated storage secret key"
+        else
+            log "Using existing storage secret key"
+        fi
+
+        echo
+        log "Configuration loaded from existing .env file"
         return
     fi
-    
+
     # Domain Configuration
     echo "Domain Configuration:"
     DOMAIN_NAME=$(prompt_env "DOMAIN_NAME" "Domain name" false)
     if [ -z "$DOMAIN_NAME" ]; then DOMAIN_NAME="tofupilot.example.com"; fi
-    
+
     # Auto-generate storage domain based on main domain
     local storage_default="storage.${DOMAIN_NAME}"
     local existing_storage=$(get_env_value "STORAGE_DOMAIN_NAME")
@@ -695,7 +745,7 @@ collect_config() {
         storage_default="$existing_storage"
     fi
     STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
-    
+
     # Auto-generate SSL email based on main domain  
     local email_default="admin@${DOMAIN_NAME}"
     local existing_email=$(get_env_value "ACME_EMAIL")
@@ -703,19 +753,26 @@ collect_config() {
         email_default="$existing_email"
     fi
     ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "SSL certificate email" "$email_default" false)
-    
+
     echo
     echo "SSL Configuration:"
     info "Specify SSL mode (letsencrypt or custom)"
     SSL_MODE=$(prompt_env_with_default "SSL_MODE" "SSL mode" "letsencrypt" false)
-    
+
     if [ "$SSL_MODE" = "custom" ]; then
-      SSL_CERT_PATH=$(prompt_env "SSL_CERT_PATH" "Path to SSL certificate file" false)
-      SSL_KEY_PATH=$(prompt_env "SSL_KEY_PATH" "Path to SSL key file" false)
-      if [ -z "$SSL_CERT_PATH" ] || [ -z "$SSL_KEY_PATH" ]; then
-        error "Both SSL_CERT_PATH and SSL_KEY_PATH must be specified in custom mode"
-      fi
-      log "Custom SSL enabled"
+        SSL_CERT_PATH=$(prompt_env "SSL_CERT_PATH" "Path to SSL certificate file" false)
+        SSL_KEY_PATH=$(prompt_env "SSL_KEY_PATH" "Path to SSL key file" false)
+        if [ -z "$SSL_CERT_PATH" ] || [ -z "$SSL_KEY_PATH" ]; then
+            error "Both SSL_CERT_PATH and SSL_KEY_PATH must be specified in custom mode"
+        fi
+        # Validate certificate files exist
+        if [ ! -f "$SSL_CERT_PATH" ]; then
+            error "SSL certificate file not found: $SSL_CERT_PATH"
+        fi
+        if [ ! -f "$SSL_KEY_PATH" ]; then
+            error "SSL key file not found: $SSL_KEY_PATH"
+        fi
+        log "Custom SSL enabled"
     fi
 
     echo
@@ -755,7 +812,7 @@ collect_config() {
     echo
     echo "Authentication Configuration (required - choose at least one):"
     info "TofuPilot requires at least one authentication method"
-    
+
     # Google OAuth Configuration
     local configure_google="y"
     local existing_google_id=$(get_env_value "AUTH_GOOGLE_ID")
@@ -772,7 +829,7 @@ collect_config() {
             configure_google="n"
         fi
     fi
-    
+
     if [ "$configure_google" != "n" ]; then
         AUTH_GOOGLE_ID=$(prompt_env "AUTH_GOOGLE_ID" "Google OAuth Client ID" false)
         if [ -n "$AUTH_GOOGLE_ID" ]; then
@@ -784,7 +841,7 @@ collect_config() {
         AUTH_GOOGLE_ID=""
         AUTH_GOOGLE_SECRET=""
     fi
-    
+
     # Microsoft Entra ID Configuration
     local configure_microsoft="y"
     local existing_microsoft_id=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")
@@ -801,7 +858,7 @@ collect_config() {
             configure_microsoft="n"
         fi
     fi
-    
+
     if [ "$configure_microsoft" != "n" ]; then
         AUTH_MICROSOFT_ENTRA_ID_ID=$(prompt_env "AUTH_MICROSOFT_ENTRA_ID_ID" "Microsoft Entra ID Client ID" false)
         if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
@@ -816,10 +873,10 @@ collect_config() {
         AUTH_MICROSOFT_ENTRA_ID_SECRET=""
         AUTH_MICROSOFT_ENTRA_ID_ISSUER=""
     fi
-    
+
     echo
     echo "Email Configuration:"
-    
+
     # Check if SMTP is required (no OAuth methods configured)
     local smtp_required=false
     if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
@@ -828,7 +885,7 @@ collect_config() {
     else
         info "SMTP email is optional (OAuth is configured)"
     fi
-    
+
     # Smart default for email from address
     local email_default="tofupilot@${DOMAIN_NAME}"
     local existing_email_from=$(get_env_value "EMAIL_FROM_AUTH")
@@ -838,7 +895,7 @@ collect_config() {
     if [ -n "$existing_email_from" ]; then
         email_default="$existing_email_from"
     fi
-    
+
     # SMTP Configuration
     local configure_smtp="y"
     local existing_smtp_host=$(get_env_value "EMAIL_SMTP_HOST")
@@ -861,7 +918,7 @@ collect_config() {
             configure_smtp="n"
         fi
     fi
-    
+
     if [ "$configure_smtp" != "n" ]; then
         EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname" false)
         if [ -z "$EMAIL_SMTP_HOST" ]; then
@@ -870,7 +927,7 @@ collect_config() {
         if [ -z "$EMAIL_SMTP_HOST" ] && [ "$smtp_required" = "true" ]; then
             error "SMTP server hostname is required when no OAuth methods are configured"
         fi
-        
+
         if [ -n "$EMAIL_SMTP_HOST" ]; then
             EMAIL_SMTP_PORT=$(prompt_env "EMAIL_SMTP_PORT" "SMTP port" false)
             if [ -z "$EMAIL_SMTP_PORT" ]; then
@@ -879,19 +936,19 @@ collect_config() {
             if [ -z "$EMAIL_SMTP_PORT" ]; then
                 EMAIL_SMTP_PORT="587"
             fi
-            
+
             EMAIL_SMTP_USER=$(prompt_env "EMAIL_SMTP_USER" "SMTP username" false)
             if [ -z "$EMAIL_SMTP_USER" ]; then
                 EMAIL_SMTP_USER=$(get_env_value "SMTP_USER")
             fi
-            
+
             EMAIL_SMTP_PASSWORD=$(prompt_env "EMAIL_SMTP_PASSWORD" "SMTP password" true)
             if [ -z "$EMAIL_SMTP_PASSWORD" ]; then
                 EMAIL_SMTP_PASSWORD=$(get_env_value "SMTP_PASSWORD")
             fi
-            
+
             EMAIL_FROM_AUTH=$(prompt_env_with_default "EMAIL_FROM_AUTH" "From email address" "$email_default" false)
-            
+
             # Test SMTP connection right after configuration
             echo
             test_smtp_connection "$EMAIL_SMTP_HOST" "$EMAIL_SMTP_PORT" "$EMAIL_SMTP_USER" "$EMAIL_SMTP_PASSWORD"
@@ -908,12 +965,12 @@ collect_config() {
         EMAIL_SMTP_PASSWORD=""
         EMAIL_FROM_AUTH=""
     fi
-    
+
     # Final validation
     if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$EMAIL_SMTP_HOST" ]; then
         error "At least one authentication method must be configured (Google OAuth, Microsoft Entra ID, or SMTP email)"
     fi
-    
+
     echo
     log "Configuration complete"
 }
@@ -1313,7 +1370,12 @@ while [ $# -gt 0 ]; do
             SHOW_LIVE_LOGS="true"
             shift
             ;;
-        --update) 
+        --update)
+            # Check if user tried to specify --env-file with --update
+            if [ -n "$CUSTOM_ENV_FILE" ]; then
+                error "--update cannot be used with --env-file. Update uses the existing deployment's configuration."
+            fi
+            
             [ ! -f "$COMPOSE_FILE" ] && error "No deployment found. Cannot update."
             [ -f "$ENV_FILE" ] && set -a && source "$ENV_FILE" && set +a
             log "🔄 Starting update process..."
@@ -1365,7 +1427,7 @@ echo
 step "2/6: IMAGE ACCESS VERIFICATION"
 if [ "$DEV_MODE" = "true" ]; then
     info "Development mode enabled - using private repository"
-    github_auth
+github_auth
 else
     info "Production mode - using public repository"
     verify_image_access
