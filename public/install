@@ -367,6 +367,7 @@ check_requirements() {
     fi
     log "Docker permissions"
     
+    
     # Docker Compose
     if ! command_exists docker-compose && ! docker compose version >/dev/null 2>&1; then
         info "Installing Docker Compose orchestration tool..."
