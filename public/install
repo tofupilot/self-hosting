@@ -77,8 +77,13 @@ ACME_EMAIL=your-email@example.com
 # SSL_KEY_PATH=/path/to/your/private.key
 
 # Authentication Configuration
+# Configure at least one authentication method (remove lines for methods you don't want)
+
+# Google OAuth (remove these lines if you don't want Google authentication)
 AUTH_GOOGLE_ID=
 AUTH_GOOGLE_SECRET=
+
+# Microsoft Entra ID (remove these lines if you don't want Microsoft authentication)
 AUTH_MICROSOFT_ENTRA_ID_ID=
 AUTH_MICROSOFT_ENTRA_ID_SECRET=
 AUTH_MICROSOFT_ENTRA_ID_ISSUER=
@@ -177,7 +182,7 @@ prompt_env_with_default() {
     echo "$user_input"
 }
 
-# Check all required variables (updated for S3_* and EMAIL_SMTP_HOST)
+# Check all required variables with detailed validation feedback
 check_all_required_vars() {
     local required_vars=(
         "DOMAIN_NAME"
@@ -185,43 +190,74 @@ check_all_required_vars() {
         "ACME_EMAIL"
     )
 
-    local missing=false
+    local all_valid=true
+    local validation_errors=()
+
+    # Check basic required variables
     for var in "${required_vars[@]}"; do
         if [ -z "$(get_env_value "$var")" ]; then
-            missing=true
-            break
+            all_valid=false
+            validation_errors+=("Missing required variable: $var")
         fi
     done
 
-    # Check if at least one auth method is configured:
-    #   • Google OAuth (AUTH_GOOGLE_ID)
-    #   • Microsoft Entra ID (AUTH_MICROSOFT_ENTRA_ID_ID)
-    #   • SMTP email (EMAIL_SMTP_HOST)
-    local has_auth=false
-    if [ -n "$(get_env_value "AUTH_GOOGLE_ID")" ] || \
-       [ -n "$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")" ] || \
-       [ -n "$(get_env_value "EMAIL_SMTP_HOST")" ]; then
-        has_auth=true
+    # Check authentication methods - at least one must be configured
+    local google_id=$(get_env_value "AUTH_GOOGLE_ID")
+    local microsoft_id=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")
+    local smtp_host=$(get_env_value "EMAIL_SMTP_HOST")
+    
+    if [ -z "$google_id" ] && [ -z "$microsoft_id" ] && [ -z "$smtp_host" ]; then
+        all_valid=false
+        validation_errors+=("At least one authentication method must be configured:")
+        validation_errors+=("  • Google OAuth (AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET)")
+        validation_errors+=("  • Microsoft Entra ID (AUTH_MICROSOFT_ENTRA_ID_ID + AUTH_MICROSOFT_ENTRA_ID_SECRET + AUTH_MICROSOFT_ENTRA_ID_ISSUER)")
+        validation_errors+=("  • SMTP Email (EMAIL_SMTP_HOST + EMAIL_SMTP_USER + EMAIL_SMTP_PASSWORD + EMAIL_FROM_AUTH)")
     fi
     
     # Check SSL configuration if custom mode is specified
     local ssl_mode=$(get_env_value "SSL_MODE")
-    local ssl_valid=true
     if [ "$ssl_mode" = "custom" ]; then
         local ssl_cert_path=$(get_env_value "SSL_CERT_PATH")
         local ssl_key_path=$(get_env_value "SSL_KEY_PATH")
         if [ -z "$ssl_cert_path" ] || [ -z "$ssl_key_path" ]; then
-            ssl_valid=false
+            all_valid=false
+            validation_errors+=("SSL_MODE=custom requires both SSL_CERT_PATH and SSL_KEY_PATH")
         elif [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
-            ssl_valid=false
+            all_valid=false
+            validation_errors+=("SSL certificate files not found:")
+            validation_errors+=("  SSL_CERT_PATH: $ssl_cert_path")
+            validation_errors+=("  SSL_KEY_PATH: $ssl_key_path")
         fi
     fi
 
-    if [ "$missing" = "false" ] && [ "$has_auth" = "true" ] && [ "$ssl_valid" = "true" ]; then
-        return 0
-    else
+    # Print validation results if there are errors
+    if [ "$all_valid" = "false" ]; then
+        echo
+        error "Environment validation failed:"
+        for error in "${validation_errors[@]}"; do
+            echo "  $error"
+        done
+        echo
+        echo "Current authentication status:"
+        if [ -n "$google_id" ]; then
+            echo "  ✓ Google OAuth: configured"
+        else
+            echo "  ✗ Google OAuth: not configured"
+        fi
+        if [ -n "$microsoft_id" ]; then
+            echo "  ✓ Microsoft Entra ID: configured"
+        else
+            echo "  ✗ Microsoft Entra ID: not configured"
+        fi
+        if [ -n "$smtp_host" ]; then
+            echo "  ✓ SMTP Email: configured"
+        else
+            echo "  ✗ SMTP Email: not configured"
+        fi
         return 1
     fi
+
+    return 0
 }
 
 
@@ -1298,7 +1334,7 @@ while [ $# -gt 0 ]; do
             info "Using custom env file: $ENV_FILE"
 
             if ! check_all_required_vars; then
-                error "Custom env file is missing required variables or authentication settings."
+                error "Custom env file validation failed. See details above."
             fi
 
             set -a
