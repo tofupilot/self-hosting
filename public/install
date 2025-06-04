@@ -468,10 +468,13 @@ EOF
 )
         if echo "$smtp_test" | grep -q "Authentication successful\|235"; then
             log "SMTP authentication successful"
+            return 0
         elif echo "$smtp_test" | grep -q "530\|535\|Authentication failed"; then
             warn "SMTP authentication failed - please verify credentials"
+            return 1
         else
-            log "SMTP server accessible (auth not tested)"
+            warn "SMTP server accessible but authentication could not be verified"
+            return 0
         fi
     fi
     
@@ -1179,7 +1182,21 @@ load_config() {
             # Test SMTP connection right after configuration
             echo
             info "Testing SMTP connection with host: '$EMAIL_SMTP_HOST', port: '$EMAIL_SMTP_PORT'"
-            test_smtp_connection "$EMAIL_SMTP_HOST" "$EMAIL_SMTP_PORT" "$EMAIL_SMTP_USER" "$EMAIL_SMTP_PASSWORD"
+            if ! test_smtp_connection "$EMAIL_SMTP_HOST" "$EMAIL_SMTP_PORT" "$EMAIL_SMTP_USER" "$EMAIL_SMTP_PASSWORD"; then
+                echo
+                if [ "$smtp_required" = "true" ]; then
+                    error "SMTP authentication is REQUIRED but failed. Cannot continue without working email configuration."
+                else
+                    warn "SMTP configuration failed validation"
+                    echo "Please check your SMTP credentials and try again:"
+                    echo "  • Verify your SMTP server hostname and port"
+                    echo "  • Check your username and password"
+                    echo "  • Ensure your account has SMTP sending permissions"
+                    echo
+                    echo "Restart the installer to try again with corrected settings."
+                    exit 1
+                fi
+            fi
         else
             EMAIL_SMTP_PORT="587"
             EMAIL_SMTP_USER=""
