@@ -1441,17 +1441,17 @@ deploy() {
     fi
     log "Services started"
 
-    # Ensure network exists
+    # Ensure Docker network exists
     docker network inspect tofupilot >/dev/null 2>&1 || docker network create tofupilot
 
-    # Wait until tofupilot-storage is resolvable
+    # Wait until DNS resolves
     info "Waiting for 'tofupilot-storage' DNS to be resolvable..."
     until docker run --rm --network=tofupilot busybox nslookup tofupilot-storage >/dev/null 2>&1; do
-    sleep 2
+        sleep 2
     done
     log "'tofupilot-storage' is resolvable"
 
-    # Wait for MinIO readiness (this you already had)
+    # Wait for MinIO health to be ready
     info "Waiting for MinIO (tofupilot-storage) to be ready..."
     until docker exec tofupilot-storage curl -sf http://localhost:9000/minio/health/ready >/dev/null; do
         sleep 2
@@ -1460,10 +1460,19 @@ deploy() {
 
     # Ensure the bucket exists
     info "Ensuring bucket 'tofupilot' exists..."
-    docker run --rm --network=tofupilot \
-    -e MC_HOST_local=http://${S3_ACCESS_KEY_ID}:${S3_SECRET_ACCESS_KEY}@tofupilot-storage:9000 \
-    minio/mc \
-    mb -p local/tofupilot || echo '[skip] Bucket already exists'
+    if docker run --rm --network=tofupilot \
+        -e MC_HOST_local=http://${S3_ACCESS_KEY_ID}:${S3_SECRET_ACCESS_KEY}@tofupilot-storage:9000 \
+        minio/mc ls local/tofupilot >/dev/null 2>&1; then
+        log "MinIO bucket already exists"
+    else
+        if docker run --rm --network=tofupilot \
+            -e MC_HOST_local=http://${S3_ACCESS_KEY_ID}:${S3_SECRET_ACCESS_KEY}@tofupilot-storage:9000 \
+            minio/mc mb -p local/tofupilot >/dev/null 2>&1; then
+            log "MinIO bucket created"
+        else
+            error "Failed to create MinIO bucket 'tofupilot'. Check DNS, credentials, and container logs."
+        fi
+    fi
 
     # Quick app check
     info "Checking application status..."
