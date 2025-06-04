@@ -522,7 +522,7 @@ EOF
       - "traefik.http.routers.tofupilot-app.entrypoints=websecure"
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls=true"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
@@ -571,7 +571,7 @@ EOF
       - "traefik.http.routers.tofupilot-storage.entrypoints=websecure"
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls=true"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
