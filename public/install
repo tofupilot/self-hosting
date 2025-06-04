@@ -950,21 +950,35 @@ EOF
 
 # Configuration loading (from file or interactive)
 load_config() {
+    # Flag to track if config came from complete file vs interactive
+    CONFIG_FROM_FILE=false
     # Check if custom env file is specified or .env exists and load it
     if [ -n "$CUSTOM_ENV_FILE" ] || [ -f "$ENV_FILE" ]; then
         if [ -n "$CUSTOM_ENV_FILE" ]; then
             info "Loading configuration from custom file: $ENV_FILE"
+            # Custom env files are expected to be complete - load and return
+            set -a
+            source "$ENV_FILE"
+            set +a
+            CONFIG_FROM_FILE=true
+            return
         else
-            info "Loading configuration from: $ENV_FILE"
+            info "Loading existing configuration from: $ENV_FILE"
+            set -a
+            source "$ENV_FILE"
+            set +a
+            
+            # For automatically created .env files, always continue with interactive setup
+            # This allows users to resume/modify their configuration
+            info "Resuming configuration with existing values as defaults..."
+            # Continue to interactive prompts below
         fi
-        set -a
-        source "$ENV_FILE"
-        set +a
-        return
     fi
     
-    # No .env file exists, collect configuration interactively
-    info "No configuration file found, collecting configuration interactively"
+    # No .env file exists or partial config found, collect configuration interactively
+    if [ ! -f "$ENV_FILE" ]; then
+        info "No configuration file found, collecting configuration interactively"
+    fi
     
     # Domain Configuration
     echo "Domain Configuration:"
@@ -1220,14 +1234,18 @@ load_config() {
 
 # Validate configuration
 validate_config() {
-    info "Validating configuration"
-    
-    # Run schema-based validation
-    if ! check_all_required_vars; then
-        error "Configuration validation failed"
+    if [ "$CONFIG_FROM_FILE" = "true" ]; then
+        info "Validating file-based configuration"
+        
+        # Run schema-based validation for file configs
+        if ! check_all_required_vars; then
+            error "Configuration validation failed"
+        fi
+        
+        log "Configuration validation passed"
+    else
+        info "Skipping validation (interactive configuration is complete by design)"
     fi
-    
-    log "Configuration validation passed"
 }
 
 
