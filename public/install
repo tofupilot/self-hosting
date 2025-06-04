@@ -21,7 +21,7 @@ ENV_FILE="$SCRIPT_DIR/.env"
 
 # Options
 CUSTOM_ENV_FILE=""
-INSTALLER_URL="https://tofupilot.sh"
+INSTALLER_URL="https://tofupilot.sh/install"
 
 # Terminal color definitions
 RED='\033[0;31m'; GREEN='\033[1;32m'; NC='\033[0m'
@@ -56,11 +56,11 @@ generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
 # Generate empty .env template
 generate_env_template() {
-    local template_file=".env.template"
+    local template_file="my-tofupilot-config.env"
     
     cat > "$template_file" <<'EOF'
 # TofuPilot Self-Hosting Configuration
-# Copy this file to .env and fill in your values
+# Fill in your values and use with --env-file
 
 # Domain Configuration
 DOMAIN_NAME=
@@ -105,12 +105,11 @@ EMAIL_FROM_AUTH=
 # GITHUB_TOKEN=
 EOF
 
-    log "Generated empty .env template at: $template_file"
+    log "Generated configuration template: $template_file"
     echo
     info "Next steps:"
-    echo "  1. Copy template: cp $template_file .env"
-    echo "  2. Fill in your values in .env"
-    echo "  3. Run installer: curl -sSL ${INSTALLER_URL} | bash -s -- --env-file .env"
+    echo "  1. Edit it: nano $template_file"
+    echo "  2. Run script: curl -sSL ${INSTALLER_URL} | bash -s -- --env-file $template_file"
 }
 
 # Environment variable retrieval utility
