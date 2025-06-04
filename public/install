@@ -54,15 +54,152 @@ step(){
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
+# Configuration Schema - Single source of truth for field definitions
+# Using bash-compatible approach instead of associative arrays
+
+# Get field configuration by name
+get_field_config() {
+    local field="$1"
+    case "$field" in
+        # Domain Configuration
+        "DOMAIN_NAME")
+            echo "required|Domain name for TofuPilot||# Domain Configuration"
+            ;;
+        "STORAGE_DOMAIN_NAME")
+            echo "required|Storage subdomain||"
+            ;;
+        # SSL Configuration  
+        "SSL_MODE")
+            echo "optional|SSL certificate mode|letsencrypt|# SSL Configuration
+# Case 1: Let's Encrypt (automatic SSL certificates)"
+            ;;
+        "SSL_LETSENCRYPT_EMAIL")
+            echo "conditional_ssl_letsencrypt|Email for Let's Encrypt certificates|your-email@example.com|"
+            ;;
+        "SSL_CERT_PATH")
+            echo "conditional_ssl_custom|Path to SSL certificate file||# Case 2: Custom SSL certificates (uncomment and set paths)
+# SSL_MODE=custom"
+            ;;
+        "SSL_KEY_PATH")
+            echo "conditional_ssl_custom|Path to SSL private key file||"
+            ;;
+        # Authentication Configuration
+        "AUTH_GOOGLE_ID")
+            echo "optional|Google OAuth Client ID||# Authentication Configuration
+# Configure at least one authentication method (remove lines for methods you don't want)
+
+# Google OAuth (remove these lines if you don't want Google authentication)"
+            ;;
+        "AUTH_GOOGLE_SECRET")
+            echo "optional|Google OAuth Client Secret||"
+            ;;
+        "AUTH_MICROSOFT_ENTRA_ID_ID")
+            echo "optional|Microsoft Entra ID Client ID||# Microsoft Entra ID (remove these lines if you don't want Microsoft authentication)"
+            ;;
+        "AUTH_MICROSOFT_ENTRA_ID_SECRET")
+            echo "optional|Microsoft Entra ID Client Secret||"
+            ;;
+        "AUTH_MICROSOFT_ENTRA_ID_ISSUER")
+            echo "optional|Microsoft Entra ID Issuer URL||"
+            ;;
+        # Email Configuration
+        "EMAIL_SMTP_HOST")
+            echo "optional|SMTP server hostname||
+
+# Email Configuration"
+            ;;
+        "EMAIL_SMTP_PORT")
+            echo "optional|SMTP port|587|"
+            ;;
+        "EMAIL_SMTP_USER")
+            echo "optional|SMTP username||"
+            ;;
+        "EMAIL_SMTP_PASSWORD")
+            echo "optional|SMTP password||"
+            ;;
+        "EMAIL_FROM_AUTH")
+            echo "optional|From email address||"
+            ;;
+        # Development Mode
+        "GITHUB_TOKEN")
+            echo "auth_method_development|GitHub Personal Access Token||# Development Mode (optional)"
+            ;;
+        *)
+            echo "unknown||||"
+            ;;
+    esac
+}
+
+# Helper functions for configuration schema
+get_field_requirement() {
+    local field="$1"
+    get_field_config "$field" | cut -d'|' -f1
+}
+
+get_field_description() {
+    local field="$1"
+    get_field_config "$field" | cut -d'|' -f2
+}
+
+get_field_default() {
+    local field="$1"
+    get_field_config "$field" | cut -d'|' -f3
+}
+
+get_field_comment() {
+    local field="$1"
+    get_field_config "$field" | cut -d'|' -f4
+}
+
+# Get all schema field names
+get_all_schema_fields() {
+    echo "DOMAIN_NAME STORAGE_DOMAIN_NAME SSL_MODE SSL_LETSENCRYPT_EMAIL SSL_CERT_PATH SSL_KEY_PATH AUTH_GOOGLE_ID AUTH_GOOGLE_SECRET AUTH_MICROSOFT_ENTRA_ID_ID AUTH_MICROSOFT_ENTRA_ID_SECRET AUTH_MICROSOFT_ENTRA_ID_ISSUER EMAIL_SMTP_HOST EMAIL_SMTP_PORT EMAIL_SMTP_USER EMAIL_SMTP_PASSWORD EMAIL_FROM_AUTH GITHUB_TOKEN"
+}
+
+# Check if field is required based on current context
+is_field_required() {
+    local field="$1"
+    local requirement=$(get_field_requirement "$field")
+    
+    case "$requirement" in
+        "required")
+            return 0
+            ;;
+        "conditional_ssl_letsencrypt")
+            [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ] && return 0
+            return 1
+            ;;
+        "conditional_ssl_custom")
+            [ "$SSL_MODE" = "custom" ] && return 0
+            return 1
+            ;;
+        "auth_method_production")
+            [ "$DEV_MODE" != "true" ] && return 0
+            return 1
+            ;;
+        "auth_method_development")
+            [ "$DEV_MODE" = "true" ] && return 0
+            return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
 # Generate empty .env template
 generate_env_template() {
     local template_file="my-tofupilot-config.env"
     
-    cat > "$template_file" <<'EOF'
+    # Start template
+    cat > "$template_file" <<EOF
 # TofuPilot Self-Hosting Configuration
 # Fill in your values and use with --env-file
 
+EOF
+
+    # Generate template maintaining the exact same format as before
+    cat >> "$template_file" <<'EOF'
 # Domain Configuration
 DOMAIN_NAME=
 STORAGE_DOMAIN_NAME=
@@ -70,7 +207,7 @@ STORAGE_DOMAIN_NAME=
 # SSL Configuration
 # Case 1: Let's Encrypt (automatic SSL certificates)
 SSL_MODE=letsencrypt
-ACME_EMAIL=your-email@example.com
+SSL_LETSENCRYPT_EMAIL=your-email@example.com
 
 # Case 2: Custom SSL certificates (uncomment and set paths)
 # SSL_MODE=custom
@@ -88,7 +225,6 @@ AUTH_GOOGLE_SECRET=
 AUTH_MICROSOFT_ENTRA_ID_ID=
 AUTH_MICROSOFT_ENTRA_ID_SECRET=
 AUTH_MICROSOFT_ENTRA_ID_ISSUER=
-
 
 # Email Configuration
 EMAIL_SMTP_HOST=
@@ -185,57 +321,66 @@ prompt_env_with_default() {
 
 # Check all required variables with detailed validation feedback
 check_all_required_vars() {
-    local required_vars=(
-        "DOMAIN_NAME"
-        "STORAGE_DOMAIN_NAME"
-    )
-
     local all_valid=true
     local validation_errors=()
 
-    # Check basic required variables
-    for var in "${required_vars[@]}"; do
-        if [ -z "$(get_env_value "$var")" ]; then
-            all_valid=false
-            validation_errors+=("Missing required variable: $var")
+    # Check schema-defined required fields
+    for field in $(get_all_schema_fields); do
+        if is_field_required "$field"; then
+            local value=$(get_env_value "$field")
+            local description=$(get_field_description "$field")
+            
+            if [ -z "$value" ]; then
+                all_valid=false
+                case "$(get_field_requirement "$field")" in
+                    "conditional_ssl_letsencrypt")
+                        validation_errors+=("Missing required variable: $field (required for Let's Encrypt SSL)")
+                        ;;
+                    "conditional_ssl_custom")
+                        validation_errors+=("Missing required variable: $field (required for custom SSL mode)")
+                        ;;
+                    *)
+                        validation_errors+=("Missing required variable: $field")
+                        ;;
+                esac
+            fi
         fi
     done
 
-    # Check ACME_EMAIL only if using Let's Encrypt
-    local ssl_mode=$(get_env_value "SSL_MODE")
-    if [ "${ssl_mode:-letsencrypt}" = "letsencrypt" ]; then
-        if [ -z "$(get_env_value "ACME_EMAIL")" ]; then
-            all_valid=false
-            validation_errors+=("Missing required variable: ACME_EMAIL (required for Let's Encrypt SSL)")
-        fi
-    fi
-
-    # Check authentication methods - at least one must be configured
+    # Check authentication methods - at least one must be configured (preserve existing logic)
     local google_id=$(get_env_value "AUTH_GOOGLE_ID")
     local microsoft_id=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")
     local smtp_host=$(get_env_value "EMAIL_SMTP_HOST")
+    local github_token=$(get_env_value "GITHUB_TOKEN")
     
-    if [ -z "$google_id" ] && [ -z "$microsoft_id" ] && [ -z "$smtp_host" ]; then
-        all_valid=false
-        validation_errors+=("At least one authentication method must be configured:")
-        validation_errors+=("  • Google OAuth (AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET)")
-        validation_errors+=("  • Microsoft Entra ID (AUTH_MICROSOFT_ENTRA_ID_ID + AUTH_MICROSOFT_ENTRA_ID_SECRET + AUTH_MICROSOFT_ENTRA_ID_ISSUER)")
-        validation_errors+=("  • SMTP Email (EMAIL_SMTP_HOST + EMAIL_SMTP_USER + EMAIL_SMTP_PASSWORD + EMAIL_FROM_AUTH)")
+    # Auth method validation depends on dev mode
+    if [ "$DEV_MODE" = "true" ]; then
+        if [ -z "$github_token" ]; then
+            all_valid=false
+            validation_errors+=("Development mode requires GITHUB_TOKEN")
+        fi
+    else
+        if [ -z "$google_id" ] && [ -z "$microsoft_id" ] && [ -z "$smtp_host" ]; then
+            all_valid=false
+            validation_errors+=("At least one authentication method must be configured:")
+            validation_errors+=("  • Google OAuth (AUTH_GOOGLE_ID + AUTH_GOOGLE_SECRET)")
+            validation_errors+=("  • Microsoft Entra ID (AUTH_MICROSOFT_ENTRA_ID_ID + AUTH_MICROSOFT_ENTRA_ID_SECRET + AUTH_MICROSOFT_ENTRA_ID_ISSUER)")
+            validation_errors+=("  • SMTP Email (EMAIL_SMTP_HOST + EMAIL_SMTP_USER + EMAIL_SMTP_PASSWORD + EMAIL_FROM_AUTH)")
+        fi
     fi
     
-    # Check SSL configuration if custom mode is specified
+    # Check SSL certificate files exist if custom mode is specified
     local ssl_mode=$(get_env_value "SSL_MODE")
     if [ "$ssl_mode" = "custom" ]; then
         local ssl_cert_path=$(get_env_value "SSL_CERT_PATH")
         local ssl_key_path=$(get_env_value "SSL_KEY_PATH")
-        if [ -z "$ssl_cert_path" ] || [ -z "$ssl_key_path" ]; then
-            all_valid=false
-            validation_errors+=("SSL_MODE=custom requires both SSL_CERT_PATH and SSL_KEY_PATH")
-        elif [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
-            all_valid=false
-            validation_errors+=("SSL certificate files not found:")
-            validation_errors+=("  SSL_CERT_PATH: $ssl_cert_path")
-            validation_errors+=("  SSL_KEY_PATH: $ssl_key_path")
+        if [ -n "$ssl_cert_path" ] && [ -n "$ssl_key_path" ]; then
+            if [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
+                all_valid=false
+                validation_errors+=("SSL certificate files not found:")
+                validation_errors+=("  SSL_CERT_PATH: $ssl_cert_path")
+                validation_errors+=("  SSL_KEY_PATH: $ssl_key_path")
+            fi
         fi
     fi
 
@@ -247,21 +392,30 @@ check_all_required_vars() {
             echo "  $error"
         done
         echo
-        echo "Current authentication status:"
-        if [ -n "$google_id" ]; then
-            echo "  ✓ Google OAuth: configured"
+        if [ "$DEV_MODE" = "true" ]; then
+            echo "Current development mode status:"
+            if [ -n "$github_token" ]; then
+                echo "  ✓ GitHub Token: configured"
+            else
+                echo "  ✗ GitHub Token: not configured"
+            fi
         else
-            echo "  ✗ Google OAuth: not configured"
-        fi
-        if [ -n "$microsoft_id" ]; then
-            echo "  ✓ Microsoft Entra ID: configured"
-        else
-            echo "  ✗ Microsoft Entra ID: not configured"
-        fi
-        if [ -n "$smtp_host" ]; then
-            echo "  ✓ SMTP Email: configured"
-        else
-            echo "  ✗ SMTP Email: not configured"
+            echo "Current authentication status:"
+            if [ -n "$google_id" ]; then
+                echo "  ✓ Google OAuth: configured"
+            else
+                echo "  ✗ Google OAuth: not configured"
+            fi
+            if [ -n "$microsoft_id" ]; then
+                echo "  ✓ Microsoft Entra ID: configured"
+            else
+                echo "  ✗ Microsoft Entra ID: not configured"
+            fi
+            if [ -n "$smtp_host" ]; then
+                echo "  ✓ SMTP Email: configured"
+            else
+                echo "  ✗ SMTP Email: not configured"
+            fi
         fi
         return 1
     fi
@@ -538,7 +692,7 @@ EOF
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
-      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.email=${SSL_LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/data/acme.json"
       - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
       - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
@@ -550,7 +704,7 @@ EOF
       - "80:80"
       - "443:443"
     environment:
-      - ACME_EMAIL=${ACME_EMAIL}
+      - SSL_LETSENCRYPT_EMAIL=${SSL_LETSENCRYPT_EMAIL}
 
   # TofuPilot Application
   tofupilot-app:
@@ -626,7 +780,7 @@ EOF
 EOF
   fi
 
-  cat >> "$COMPOSE_FILE" <<'EOF'
+  cat >> "$COMPOSE_FILE" <<EOF
 
   # Database
   tofupilot-database:
@@ -684,7 +838,7 @@ volumes:
 EOF
 
   if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
-    cat >> "$COMPOSE_FILE" <<'EOF'
+    cat >> "$COMPOSE_FILE" <<EOF
   tofupilot-proxy-acme:
 EOF
   fi
@@ -741,7 +895,7 @@ create_env_file() {
 # Domain Configuration
 DOMAIN_NAME=${DOMAIN_NAME}
 STORAGE_DOMAIN_NAME=${STORAGE_DOMAIN_NAME}
-ACME_EMAIL=${ACME_EMAIL}
+SSL_LETSENCRYPT_EMAIL=${SSL_LETSENCRYPT_EMAIL}
 
 # SSL Configuration
 SSL_MODE=${SSL_MODE:-letsencrypt}
@@ -767,14 +921,23 @@ EOF
 }
 
 
-# Interactive configuration collection and validation
-collect_config() {
-
-    # Check if .env exists and has all required variables
-    if [ -f "$ENV_FILE" ] && check_all_required_vars; then
-        info ".env file found with all required variables. Using existing configuration."
+# Configuration loading (from file or interactive)
+load_config() {
+    # Check if custom env file is specified or .env exists and load it
+    if [ -n "$CUSTOM_ENV_FILE" ] || [ -f "$ENV_FILE" ]; then
+        if [ -n "$CUSTOM_ENV_FILE" ]; then
+            info "Loading configuration from custom file: $ENV_FILE"
+        else
+            info "Loading configuration from: $ENV_FILE"
+        fi
+        set -a
+        source "$ENV_FILE"
+        set +a
         return
     fi
+    
+    # No .env file exists, collect configuration interactively
+    info "No configuration file found, collecting configuration interactively"
     
     # Domain Configuration
     echo "Domain Configuration:"
@@ -791,11 +954,11 @@ collect_config() {
     
     # Auto-generate SSL email based on main domain  
     local email_default="admin@${DOMAIN_NAME}"
-    local existing_email=$(get_env_value "ACME_EMAIL")
+    local existing_email=$(get_env_value "SSL_LETSENCRYPT_EMAIL")
     if [ -n "$existing_email" ]; then
         email_default="$existing_email"
     fi
-    ACME_EMAIL=$(prompt_env_with_default "ACME_EMAIL" "SSL certificate email" "$email_default" false)
+    SSL_LETSENCRYPT_EMAIL=$(prompt_env_with_default "SSL_LETSENCRYPT_EMAIL" "Let's Encrypt email" "$email_default" false)
     
     echo
     echo "SSL Configuration:"
@@ -990,13 +1153,20 @@ collect_config() {
         EMAIL_FROM_AUTH=""
     fi
     
-    # Final validation
-    if [ -z "$AUTH_GOOGLE_ID" ] && [ -z "$AUTH_MICROSOFT_ENTRA_ID_ID" ] && [ -z "$EMAIL_SMTP_HOST" ]; then
-        error "At least one authentication method must be configured (Google OAuth, Microsoft Entra ID, or SMTP email)"
-    fi
-    
     echo
     log "Configuration complete"
+}
+
+# Validate configuration
+validate_config() {
+    info "Validating configuration"
+    
+    # Run schema-based validation
+    if ! check_all_required_vars; then
+        error "Configuration validation failed"
+    fi
+    
+    log "Configuration validation passed"
 }
 
 
@@ -1058,20 +1228,8 @@ deploy() {
         log "All services running"
         
         if docker compose -f "$COMPOSE_FILE" logs app 2>/dev/null | grep -q "exec format error"; then
-            error "TofuPilot app failed with 'exec format error' – architecture compatibility issue.
+            error "TofuPilot app failed with 'exec format error' – architecture compatibility issue. Check Docker platform emulation settings."
 
-This happens on ARM64 systems (Apple Silicon Macs) when Docker can’t emulate AMD64 images.
-
-Solutions:
-1. **Docker Desktop (Mac)**: Enable 'Use Rosetta for x86/amd64 emulation on Apple Silicon'
-   - Docker Desktop → Settings → General → Use Rosetta…
-2. **Install QEMU emulators**: 
-   docker run --rm --privileged tonistiigi/binfmt --install all
-3. **Alternative**: Contact TofuPilot for ARM64-native images
-
-Then restart the deployment:
-   docker compose down
-   bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
         fi
         
     else
@@ -1221,7 +1379,7 @@ uninstall_tofupilot() {
     fi
     
     echo
-    step "1/6: STOPPING SERVICES"
+    step "1/6: Stopping services"
     if [ -f "$COMPOSE_FILE" ]; then
         docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || docker-compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
         log "Services stopped"
@@ -1229,24 +1387,24 @@ uninstall_tofupilot() {
         warn "No docker-compose.yml found"
     fi
     
-    step "2/6: REMOVING CONTAINERS"
+    step "2/6: Removing containers"
     docker ps -a --filter "name=tofupilot" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
     log "Containers removed"
     
-    step "3/6: REMOVING VOLUMES"
+    step "3/6: Removing volumes"
     docker volume ls --filter "name=tofupilot" --format "{{.Name}}" | xargs -r docker volume rm 2>/dev/null || true
     docker volume ls --filter "name=root" --format "{{.Name}}" | grep -E "(tofupilot-database-data|tofupilot-storage-data|tofupilot-proxy-acme)" | xargs -r docker volume rm 2>/dev/null || true
     log "Volumes removed"
     
-    step "4/6: REMOVING CONFIGURATION"
+    step "4/6: Removing configuration"
     rm -f "$ENV_FILE" "$COMPOSE_FILE" "${ENV_FILE}.backup."* 2>/dev/null || true
     log "Configuration files removed"
     
-    step "5/6: CLEANING DOCKER SYSTEM"
+    step "5/6: Cleaning docker system"
     docker system prune -f --volumes 2>/dev/null || true
     log "Docker system cleaned"
     
-    step "6/6: REMOVING IMAGES"
+    step "6/6: Removing images"
     docker images --filter "reference=ghcr.io/tofupilot/*" --format "{{.Repository}}:{{.Tag}}" | xargs -r docker rmi 2>/dev/null || true
     log "Images removed"
     
@@ -1304,13 +1462,6 @@ while [ $# -gt 0 ]; do
             [ ! -f "$CUSTOM_ENV_FILE" ] && error "Specified env file not found: $CUSTOM_ENV_FILE"
             ENV_FILE="$CUSTOM_ENV_FILE"
             info "Using custom env file: $ENV_FILE"
-
-            if ! check_all_required_vars; then
-                echo
-                echo -e "${RED}✗ Custom env file validation failed. Please fix the issues above and try again.${NC}"
-                exit 1
-            fi
-
             shift
             ;;
         --development)
@@ -1343,11 +1494,11 @@ done
 
 # Main installation flow
 
-step "1/5: pre-flight checks"
+step "1/6: System checks"
 check_requirements
 
 echo
-step "2/5: image access verification"
+step "2/6: Image access verification"
 if [ "$DEV_MODE" = "true" ]; then
     info "Development mode enabled - using private repository"
     github_auth
@@ -1357,17 +1508,18 @@ else
 fi
 
 echo
-step "3/5: configuration"
-if [ -n "$CUSTOM_ENV_FILE" ]; then
-    log "Using provided .env file; skipping interactive configuration."
-fi
-collect_config
+step "3/6: Configuration"
+load_config
 
 echo
-step "4/5: deployment"
+step "4/6: Validation"
+validate_config
+
+echo
+step "5/6: Deployment"
 deploy
 
-step "5/5: next steps"
+step "6/6: Next steps"
 show_info
 
 
