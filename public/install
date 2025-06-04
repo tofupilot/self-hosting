@@ -494,10 +494,6 @@ create_compose_file() {
     info "Removed existing docker-compose.yml file"
   fi
   
-  # Generate passwords once for consistency across services
-  export AUTH_SECRET=$(generate_password)
-  export GEL_PASSWORD=$(generate_password)
-  export S3_SECRET_ACCESS_KEY=$(generate_password)
 
   cat > "$COMPOSE_FILE" <<EOF
 
@@ -1361,6 +1357,10 @@ collect_config
 
 echo
 step "4/5: deployment"
+# Generate system passwords before deployment
+export AUTH_SECRET=$(generate_password)
+export GEL_PASSWORD=$(generate_password)
+export S3_SECRET_ACCESS_KEY=$(generate_password)
 deploy
 
 step "5/5: next steps"
