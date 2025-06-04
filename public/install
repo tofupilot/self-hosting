@@ -593,7 +593,7 @@ EOF
       - GEL_DATABASE=main
       - GEL_HOST=tofupilot-database
       - GEL_PORT=5656
-      - GEL_CLIENT_TLS_SECURITY=insecure_dev_mode
+      - GEL_CLIENT_TLS_SECURITY=insecure
       
       # Storage Configuration (hardcoded)
       - S3_ACCESS_KEY_ID=tofupilot
@@ -639,7 +639,7 @@ EOF
       - GEL_PASSWORD=${GEL_PASSWORD}
       - GEL_DATABASE=main
       - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
-      - GEL_SERVER_SECURITY=insecure
+      - GEL_SERVER_SECURITY=insecure_dev_mode
     volumes:
       - tofupilot-database-data:/var/lib/gel/data
     ports:
