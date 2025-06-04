@@ -21,9 +21,10 @@ ENV_FILE="$SCRIPT_DIR/.env"
 
 # Options
 CUSTOM_ENV_FILE=""
+INSTALLER_URL="https://tofupilot.sh"
 
 # Terminal color definitions
-RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[1;32m'; NC='\033[0m'
 # Brand colors
 BRAND_BLUE='\033[38;2;59;130;246m'    # Blue-500
 BRAND_GOLD='\033[38;2;234;179;8m'     # Yellow-500
@@ -45,8 +46,8 @@ error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
 info(){ echo -e "${BRAND_BLUE}→ $1${NC}"; }
 step(){ 
     echo
-    echo -e "${BRAND_GOLD}>>> STEP $1${NC}"
-    echo -e "${BRAND_GOLD}-----------------------------${NC}"
+    echo -e "${BRAND_GOLD}Step $1${NC}"
+    echo -e "${BRAND_GOLD}─────────────────────────────────────────────${NC}"
     echo
 }
 
@@ -155,8 +156,21 @@ check_all_required_vars() {
        [ -n "$(get_env_value "EMAIL_SMTP_HOST")" ]; then
         has_auth=true
     fi
+    
+    # Check SSL configuration if custom mode is specified
+    local ssl_mode=$(get_env_value "SSL_MODE")
+    local ssl_valid=true
+    if [ "$ssl_mode" = "custom" ]; then
+        local ssl_cert_path=$(get_env_value "SSL_CERT_PATH")
+        local ssl_key_path=$(get_env_value "SSL_KEY_PATH")
+        if [ -z "$ssl_cert_path" ] || [ -z "$ssl_key_path" ]; then
+            ssl_valid=false
+        elif [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
+            ssl_valid=false
+        fi
+    fi
 
-    if [ "$missing" = "false" ] && [ "$has_auth" = "true" ]; then
+    if [ "$missing" = "false" ] && [ "$has_auth" = "true" ] && [ "$ssl_valid" = "true" ]; then
         return 0
     else
         return 1
@@ -349,6 +363,7 @@ check_requirements() {
     fi
     log "Docker permissions"
     
+    
     # Docker Compose
     if ! command_exists docker-compose && ! docker compose version >/dev/null 2>&1; then
         info "Installing Docker Compose orchestration tool..."
@@ -400,7 +415,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - ${SSL_CERT_PATH}:/certs/tls.crt:ro
       - ${SSL_KEY_PATH}:/certs/tls.key:ro
@@ -503,7 +518,7 @@ EOF
       - "traefik.http.routers.tofupilot-app.entrypoints=websecure"
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls=true"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
@@ -552,7 +567,7 @@ EOF
       - "traefik.http.routers.tofupilot-storage.entrypoints=websecure"
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls=true"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
@@ -578,7 +593,7 @@ EOF
   fi
 
   # Create TLS configuration file for custom certificates
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     create_traefik_tls_config
   fi
 
@@ -620,8 +635,6 @@ create_env_file() {
         BACKUP_ENV="${ENV_FILE}.backup.${TIMESTAMP}"
         cp "$ENV_FILE" "$BACKUP_ENV"
         log "Backed up existing .env to ${BACKUP_ENV}"
-        # Now point ENV_FILE at the backup so we merge into it
-        ENV_FILE="$BACKUP_ENV"
     else
         # No previous .env existed: we’ll just write directly to $ENV_FILE
         log "No existing .env found; creating new ENV_FILE at ${ENV_FILE}"
@@ -668,7 +681,7 @@ EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
 EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
 EOF
 
-    log "Merged environment written to ${ENV_FILE}"
+    log "Environment configuration written to ${ENV_FILE}"
 }
 
 
@@ -706,16 +719,37 @@ collect_config() {
     
     echo
     echo "SSL Configuration:"
-    info "Specify SSL mode (letsencrypt or custom)"
-    SSL_MODE=$(prompt_env_with_default "SSL_MODE" "SSL mode" "letsencrypt" false)
+    info "Choose SSL certificate mode:"
+    echo "  • letsencrypt: Automatic SSL certificates (recommended)"
+    echo "  • custom: Use your own SSL certificate files"
+    SSL_MODE=$(prompt_env_with_default "SSL_MODE" "SSL mode (letsencrypt/custom)" "letsencrypt" false)
     
     if [ "$SSL_MODE" = "custom" ]; then
-      SSL_CERT_PATH=$(prompt_env "SSL_CERT_PATH" "Path to SSL certificate file" false)
-      SSL_KEY_PATH=$(prompt_env "SSL_KEY_PATH" "Path to SSL key file" false)
-      if [ -z "$SSL_CERT_PATH" ] || [ -z "$SSL_KEY_PATH" ]; then
-        error "Both SSL_CERT_PATH and SSL_KEY_PATH must be specified in custom mode"
-      fi
-      log "Custom SSL enabled"
+        echo
+        info "Custom SSL certificate configuration:"
+        SSL_CERT_PATH=$(prompt_env "SSL_CERT_PATH" "Path to SSL certificate file (.crt/.pem)" false)
+        SSL_KEY_PATH=$(prompt_env "SSL_KEY_PATH" "Path to SSL private key file (.key)" false)
+        
+        if [ -z "$SSL_CERT_PATH" ] || [ -z "$SSL_KEY_PATH" ]; then
+            error "Both SSL_CERT_PATH and SSL_KEY_PATH must be specified when using custom SSL mode"
+        fi
+        
+        # Validate certificate files exist
+        if [ ! -f "$SSL_CERT_PATH" ]; then
+            error "SSL certificate file not found: $SSL_CERT_PATH"
+        fi
+        if [ ! -f "$SSL_KEY_PATH" ]; then
+            error "SSL private key file not found: $SSL_KEY_PATH"
+        fi
+        
+        log "Custom SSL certificate files validated"
+    elif [ "$SSL_MODE" != "letsencrypt" ]; then
+        warn "Invalid SSL mode '$SSL_MODE', defaulting to letsencrypt"
+        SSL_MODE="letsencrypt"
+    fi
+    
+    if [ "$SSL_MODE" = "letsencrypt" ]; then
+        log "Let's Encrypt automatic SSL enabled"
     fi
 
     echo
@@ -864,9 +898,6 @@ collect_config() {
     
     if [ "$configure_smtp" != "n" ]; then
         EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname" false)
-        if [ -z "$EMAIL_SMTP_HOST" ]; then
-            EMAIL_SMTP_HOST="$existing_smtp_host"
-        fi
         if [ -z "$EMAIL_SMTP_HOST" ] && [ "$smtp_required" = "true" ]; then
             error "SMTP server hostname is required when no OAuth methods are configured"
         fi
@@ -998,18 +1029,6 @@ Then restart the deployment:
    bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
         fi
         
-        info "Testing HTTPS connectivity..."
-        
-        # Instant check for HTTPS
-        if curl -f -s -I "https://${DOMAIN_NAME}" >/dev/null 2>&1; then
-            log "HTTPS is accessible at https://${DOMAIN_NAME}"
-        else
-            warn "HTTPS not ready yet. SSL certificates may take a few minutes to generate."
-            info "Check later with: curl -I https://${DOMAIN_NAME}"
-            if curl -f -s -I "http://${DOMAIN_NAME}" >/dev/null 2>&1; then
-                info "HTTP is working: http://${DOMAIN_NAME}"
-            fi
-        fi
     else
         error "Some services failed to start. Check logs with: docker compose logs"
     fi
@@ -1017,16 +1036,33 @@ Then restart the deployment:
 
 # Show deployment information
 show_info() {
+    info "What was deployed:"
+    if [ "$DEV_MODE" = "true" ]; then
+        echo "  • TofuPilot development version"
+    else
+        echo "  • TofuPilot production version"
+    fi
+    if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
+        echo "  • Custom SSL certificates"
+    else
+        echo "  • Let's Encrypt SSL certificates"
+    fi
+    echo "  • TofuPilot database (Gel)"
+    echo "  • TofuPilot storage (MinIO)"
+    echo "  • TofuPilot proxy (Traefik)"
     echo
-    echo "========================================="
-    echo "    TofuPilot Deployment Complete!    "
-    echo "========================================="
-    echo
-    info "Your TofuPilot instance is accessible at:"
+    info "Your TofuPilot instance will be accessible at:"
     echo "  • Main app: https://${DOMAIN_NAME}"
     echo "  • Storage:  https://${STORAGE_DOMAIN_NAME}"
     echo
-    warn "Complete identity provider configuration:"
+    
+    warn "Database Migration Notice:"
+    echo "If this is your first TofuPilot installation, the database needs to migrate to"
+    echo "the latest schema version. This process may take up to 5 minutes."
+    echo "Monitor migration progress: curl -sSL ${INSTALLER_URL} | bash -s -- --logs app"
+    echo
+    
+    warn "Complete setup if not done already:"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
         echo "  • Google OAuth: Configure redirect URI:"
         echo "    https://${DOMAIN_NAME}/api/auth/callback/google"
@@ -1035,19 +1071,15 @@ show_info() {
         echo "  • Microsoft Entra ID: Configure redirect URI:"
         echo "    https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id"
     fi
-    if [ -n "$EMAIL_SMTP_HOST" ]; then
-        echo "  • SMTP Authentication: Configured using ${EMAIL_SMTP_HOST}"
-    fi
+    echo "  • Configure firewall: https://tofupilot.com/self-hosting/firewall"
+    echo "  • Configure backups: https://tofupilot.com/self-hosting/backup"
     echo
-    info "Next steps:"
-    echo "  1. Complete authentication provider setup above"
-    echo "  2. Access your TofuPilot instance at https://${DOMAIN_NAME}"
-    echo
-    info "Administrative commands:"
+    info "Management commands:"
+    echo "  • Check status: curl -sSL ${INSTALLER_URL} | bash -s -- --status"
     echo "  • View logs:    docker compose logs -f"
-    echo "  • Stop:         docker compose down"
     echo "  • Restart:      docker compose restart"
-    echo "  • Status:       curl -sSL <installer-url> | bash -s -- --status"
+    echo "  • Stop:         docker compose down"
+    echo "  • Start:        docker compose up -d"
     echo
 }
 
@@ -1113,63 +1145,6 @@ show_status() {
     echo "  Storage:  https://${STORAGE_DOMAIN_NAME:-storage.localhost}"
 }
 
-# Show logs
-show_logs() {
-    local service="$1"
-    
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    if [ -n "$service" ]; then
-        log "Showing logs for service: $service"
-        docker compose -f "$COMPOSE_FILE" logs -f --tail=100 "$service"
-    else
-        log "Showing logs for all services"
-        docker compose -f "$COMPOSE_FILE" logs -f --tail=100
-    fi
-}
-
-# Restart services
-restart_services() {
-    local service="$1"
-    
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    if [ -n "$service" ]; then
-        log "Restarting service: $service"
-        docker compose -f "$COMPOSE_FILE" restart "$service"
-    else
-        log "Restarting all services"
-        docker compose -f "$COMPOSE_FILE" restart
-    fi
-    
-    log "Restart complete"
-}
-
-# Stop services
-stop_services() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    log "Stopping all services..."
-    docker compose -f "$COMPOSE_FILE" down
-    log "All services stopped"
-}
-
-# Start services  
-start_services() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    log "Starting all services..."
-    docker compose -f "$COMPOSE_FILE" up -d
-    log "All services started"
-}
 
 # Uninstall TofuPilot completely
 uninstall_tofupilot() {
@@ -1240,34 +1215,25 @@ uninstall_tofupilot() {
 
 # Show usage
 usage() {
-    echo "TofuPilot Self-Hosting Deployment Script"
-    echo "=========================="
-    echo
-    echo "Usage: curl -sSL <installer-url> | bash -s -- [OPTIONS]"
+    echo "Usage: curl -sSL ${INSTALLER_URL} | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
-    echo "  (no options)            Fresh TofuPilot installation (production)"
-    echo "  --dev                   Install development version (requires GitHub access)"
+    echo "  (no options)            Install/update production version"
+    echo "  --development           Install/update development version (requires GitHub access)"
     echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
     echo
     echo "Service Management:"
     echo "  --status                Show service status and health"
-    echo "  --logs [service]        Show logs (all services or specific)"
-    echo "  --restart [service]     Restart services (all or specific)"
-    echo "  --start                 Start all services"
-    echo "  --stop                  Stop all services"
-    echo
     echo "  --uninstall             Completely remove TofuPilot (with confirmation)"
     echo "  --help                  Show this help message"
     echo
     echo "Examples:"
-    echo "  curl -sSL <url> | bash                    # Fresh installation (production)"
-    echo "  curl -sSL <url> | bash -s -- --dev       # Development installation"
-    echo "  curl -sSL <url> | bash -s -- --env-file /path/to/custom.env # Use existing env"
+    echo "  curl -sSL ${INSTALLER_URL} | bash                            # Install/update production"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development        # Install/update development"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env # Use existing env"
     echo
-    echo "  curl -sSL <url> | bash -s -- --status    # Check deployment status"
-    echo "  curl -sSL <url> | bash -s -- --logs app  # Show application logs"
-    echo "  curl -sSL <url> | bash -s -- --uninstall # Completely remove TofuPilot"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status             # Check deployment status"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall          # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
@@ -1303,41 +1269,14 @@ while [ $# -gt 0 ]; do
 
             shift
             ;;
-        --dev)
+        --development)
             DEV_MODE="true"
             shift
             ;;
 
 
-        --show-live-logs)
-            SHOW_LIVE_LOGS="true"
-            shift
-            ;;
-        --update) 
-            [ ! -f "$COMPOSE_FILE" ] && error "No deployment found. Cannot update."
-            [ -f "$ENV_FILE" ] && set -a && source "$ENV_FILE" && set +a
-            log "🔄 Starting update process..."
-            deploy
-            exit 0
-            ;;
         --status)
             show_status
-            exit 0
-            ;;
-        --logs)
-            show_logs "$2"
-            exit 0
-            ;;
-        --restart)
-            restart_services "$2"
-            exit 0
-            ;;
-        --stop)
-            stop_services
-            exit 0
-            ;;
-        --start)
-            start_services
             exit 0
             ;;
         --uninstall)
@@ -1358,11 +1297,11 @@ done
 
 # Main installation flow
 
-step "1/6: PRE-FLIGHT CHECKS"
+step "1/5: pre-flight checks"
 check_requirements
 
 echo
-step "2/6: IMAGE ACCESS VERIFICATION"
+step "2/5: image access verification"
 if [ "$DEV_MODE" = "true" ]; then
     info "Development mode enabled - using private repository"
     github_auth
@@ -1372,41 +1311,18 @@ else
 fi
 
 echo
-step "3/6: CONFIGURATION"
+step "3/5: configuration"
 if [ -n "$CUSTOM_ENV_FILE" ]; then
     log "Using provided .env file; skipping interactive configuration."
-    collect_config
-else
-    collect_config
 fi
+collect_config
 
 echo
-step "4/6: DEPLOYMENT"
+step "4/5: deployment"
 deploy
 
-step "5/6: VERIFICATION"
-info "Verifying deployment status..."
-sleep 2
-
-step "6/6: COMPLETE"
+step "5/5: next steps"
 show_info
 
-if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
-    echo -e "${YELLOW}! If you are deploying on a cloud VM (AWS, GCP, Azure, etc.), make sure to:${NC}"
-    echo -e "${YELLOW}  - Open inbound ports 80 (HTTP) and 443 (HTTPS) in your firewall/security group${NC}"
-    echo -e "${YELLOW}  - Point your DNS records to this server's IP address${NC}"
-    echo
-    echo "Quick links:"
-    echo "  AWS:   https://docs.aws.amazon.com/vpc/latest/userguide/security-group-rules.html"
-    echo "  GCP:   https://cloud.google.com/vpc/docs/using-firewalls"
-    echo "  Azure: https://learn.microsoft.com/en-us/azure/virtual-network/network-security-groups-overview"
-fi
-
-if [ "$SHOW_LIVE_LOGS" = "true" ]; then
-    echo
-    info "Showing live logs (press Ctrl+C to exit)..."
-    echo
-    docker compose -f "$COMPOSE_FILE" logs -f
-fi
 
 echo
