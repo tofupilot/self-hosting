@@ -916,6 +916,35 @@ EOF
 }
 
 
+# Save current configuration variables to .env file during interactive setup
+save_partial_config() {
+    cat > "$ENV_FILE" <<EOF
+# Domain Configuration
+DOMAIN_NAME=${DOMAIN_NAME:-}
+STORAGE_DOMAIN_NAME=${STORAGE_DOMAIN_NAME:-}
+
+# SSL Configuration
+SSL_MODE=${SSL_MODE:-letsencrypt}
+SSL_LETSENCRYPT_EMAIL=${SSL_LETSENCRYPT_EMAIL:-}
+SSL_CERT_PATH=${SSL_CERT_PATH:-}
+SSL_KEY_PATH=${SSL_KEY_PATH:-}
+
+# Authentication Configuration
+AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID:-}
+AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET:-}
+AUTH_MICROSOFT_ENTRA_ID_ID=${AUTH_MICROSOFT_ENTRA_ID_ID:-}
+AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
+AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
+
+# Email Configuration
+EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-}
+EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
+EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
+EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
+EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
+EOF
+}
+
 # Configuration loading (from file or interactive)
 load_config() {
     # Check if custom env file is specified or .env exists and load it
@@ -946,6 +975,9 @@ load_config() {
         storage_default="$existing_storage"
     fi
     STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
+    
+    # Save domain configuration
+    save_partial_config
     
     echo
     echo "SSL Configuration:"
@@ -990,6 +1022,9 @@ load_config() {
         SSL_LETSENCRYPT_EMAIL=$(prompt_env_with_default "SSL_LETSENCRYPT_EMAIL" "Let's Encrypt email" "$email_default" false)
         log "Let's Encrypt automatic SSL enabled"
     fi
+    
+    # Save SSL configuration
+    save_partial_config
 
     echo
     echo "Security Configuration:"
@@ -1063,6 +1098,9 @@ load_config() {
         AUTH_MICROSOFT_ENTRA_ID_SECRET=""
         AUTH_MICROSOFT_ENTRA_ID_ISSUER=""
     fi
+    
+    # Save authentication configuration
+    save_partial_config
     
     echo
     echo "Email Configuration:"
@@ -1155,6 +1193,9 @@ load_config() {
         EMAIL_SMTP_PASSWORD=""
         EMAIL_FROM_AUTH=""
     fi
+    
+    # Save final email configuration
+    save_partial_config
     
     echo
     log "Configuration complete"
