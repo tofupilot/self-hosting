@@ -688,6 +688,18 @@ check_requirements() {
 create_compose_file() {
   log "Creating Docker Compose configuration..."
   
+  # Debug: Show key variables
+  info "DOMAIN_NAME='$DOMAIN_NAME'"
+  info "STORAGE_DOMAIN_NAME='$STORAGE_DOMAIN_NAME'"
+  
+  # Validate required variables
+  if [ -z "$DOMAIN_NAME" ]; then
+    error "DOMAIN_NAME is empty - cannot create Docker Compose configuration"
+  fi
+  if [ -z "$STORAGE_DOMAIN_NAME" ]; then
+    error "STORAGE_DOMAIN_NAME is empty - cannot create Docker Compose configuration"
+  fi
+  
   # Remove existing compose file if it exists
   if [ -f "$COMPOSE_FILE" ]; then
     rm -f "$COMPOSE_FILE"
