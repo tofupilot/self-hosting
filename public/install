@@ -54,24 +54,6 @@ step(){
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
-# Generate auto-generated variables that users should never configure
-generate_system_vars() {
-    # Auto-generated security credentials (cannot be overridden by user)
-    AUTH_SECRET=$(generate_password)
-    
-    # Auto-generated database configuration (cannot be overridden by user)  
-    GEL_USER="edgedb"
-    GEL_DATABASE="main"
-    GEL_HOST="tofupilot-database"
-    GEL_PORT="5656"
-    GEL_CLIENT_TLS_SECURITY="insecure"
-    GEL_PASSWORD=$(generate_password)
-    
-    # Auto-generated storage configuration (cannot be overridden by user)
-    S3_ACCESS_KEY_ID="tofupilot"
-    S3_BUCKET_NAME="tofupilot"
-    S3_SECRET_ACCESS_KEY=$(generate_password)
-}
 
 # Generate empty .env template
 generate_env_template() {
@@ -511,8 +493,13 @@ create_compose_file() {
     rm -f "$COMPOSE_FILE"
     info "Removed existing docker-compose.yml file"
   fi
+  
+  # Generate passwords once for consistency across services
+  local AUTH_SECRET=$(generate_password)
+  local GEL_PASSWORD=$(generate_password)
+  local S3_SECRET_ACCESS_KEY=$(generate_password)
 
-  cat > "$COMPOSE_FILE" <<'EOF'
+  cat > "$COMPOSE_FILE" <<EOF
 
 services:
   # Reverse proxy (Traefik)
@@ -600,20 +587,20 @@ EOF
       - AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
       - AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
       
-      # Database Configuration
-      - GEL_USER=${GEL_USER}
+      # Database Configuration (hardcoded)
+      - GEL_USER=edgedb
       - GEL_PASSWORD=${GEL_PASSWORD}
-      - GEL_DATABASE=${GEL_DATABASE}
-      - GEL_HOST=${GEL_HOST}
-      - GEL_PORT=${GEL_PORT}
-      - GEL_CLIENT_TLS_SECURITY=${GEL_CLIENT_TLS_SECURITY}
+      - GEL_DATABASE=main
+      - GEL_HOST=tofupilot-database
+      - GEL_PORT=5656
+      - GEL_CLIENT_TLS_SECURITY=insecure
       
-      # Storage Configuration
-      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
+      # Storage Configuration (hardcoded)
+      - S3_ACCESS_KEY_ID=tofupilot
       - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
       - S3_ENDPOINT_URL_EXTERNAL=https://${STORAGE_DOMAIN_NAME}
       - S3_ENDPOINT_URL_INTERNAL=http://tofupilot-storage:9000
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_BUCKET_NAME=tofupilot
       
       # Email Configuration
       - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-}
@@ -648,9 +635,9 @@ EOF
     container_name: tofupilot-database
     restart: unless-stopped
     environment:
-      - GEL_USER=${GEL_USER}
+      - GEL_USER=edgedb
       - GEL_PASSWORD=${GEL_PASSWORD}
-      - GEL_DATABASE=${GEL_DATABASE}
+      - GEL_DATABASE=main
       - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
       - GEL_SERVER_SECURITY=insecure_dev_mode
     volumes:
@@ -666,9 +653,9 @@ EOF
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID}
+      - MINIO_ROOT_USER=tofupilot
       - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY}
-      - MINIO_BUCKETS=${S3_BUCKET_NAME}
+      - MINIO_BUCKETS=tofupilot
     volumes:
       - tofupilot-storage-data:/data
     labels:
@@ -761,26 +748,12 @@ SSL_MODE=${SSL_MODE:-letsencrypt}
 SSL_CERT_PATH=${SSL_CERT_PATH:-}
 SSL_KEY_PATH=${SSL_KEY_PATH:-}
 
-# Authentication Configuration
-AUTH_SECRET=${AUTH_SECRET}
+# Authentication Configuration (user-configurable only)
 AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID:-}
 AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET:-}
 AUTH_MICROSOFT_ENTRA_ID_ID=${AUTH_MICROSOFT_ENTRA_ID_ID:-}
 AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
 AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
-
-# Database Configuration
-GEL_USER=${GEL_USER}
-GEL_PASSWORD=${GEL_PASSWORD}
-GEL_DATABASE=${GEL_DATABASE}
-GEL_HOST=${GEL_HOST}
-GEL_PORT=${GEL_PORT}
-GEL_CLIENT_TLS_SECURITY=${GEL_CLIENT_TLS_SECURITY}
-
-# Storage Configuration
-S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
-S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
-S3_BUCKET_NAME=${S3_BUCKET_NAME}
 
 # Email Configuration
 EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-}
@@ -863,13 +836,7 @@ collect_config() {
 
     echo
     echo "Security Configuration:"
-    info "Generating secure passwords automatically..."
-
-    # Generate system variables
-    generate_system_vars
-    log "Generated authentication secret"
-    log "Generated database credentials"
-    log "Generated storage credentials"
+    info "System will auto-generate secure passwords during deployment"
 
     echo
     echo "Authentication Configuration (required - choose at least one):"
@@ -1394,8 +1361,6 @@ collect_config
 
 echo
 step "4/5: deployment"
-# Always generate system variables (passwords, database config, etc.)
-generate_system_vars
 deploy
 
 step "5/5: next steps"
