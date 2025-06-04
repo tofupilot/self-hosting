@@ -1441,6 +1441,9 @@ deploy() {
     fi
     log "Services started"
 
+    # Ensure the Docker network exists before running mc
+    docker network inspect tofupilot >/dev/null 2>&1 || docker network create tofupilot
+
     # Wait for MinIO readiness
     info "Waiting for MinIO (tofupilot-storage) to be ready..."
     until docker exec tofupilot-storage curl -sf http://localhost:9000/minio/health/ready >/dev/null; do
