@@ -23,7 +23,7 @@ ENV_FILE="$SCRIPT_DIR/.env"
 CUSTOM_ENV_FILE=""
 
 # Terminal color definitions
-RED='\033[0;31m'; GREEN='\033[1;32m'; YELLOW='\033[1;33m'; BLUE='\033[1;34m'; CYAN='\033[1;36m'; NC='\033[0m'
+RED='\033[0;31m'; GREEN='\033[1;32m'; NC='\033[0m'
 # Brand colors
 BRAND_BLUE='\033[38;2;59;130;246m'    # Blue-500
 BRAND_GOLD='\033[38;2;234;179;8m'     # Yellow-500
@@ -45,7 +45,7 @@ error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
 info(){ echo -e "${BRAND_BLUE}→ $1${NC}"; }
 step(){ 
     echo
-    echo -e "${BRAND_GOLD}step $1${NC}"
+    echo -e "${BRAND_GOLD}Step $1${NC}"
     echo -e "${BRAND_GOLD}─────────────────────────────────────────────${NC}"
     echo
 }
@@ -634,8 +634,6 @@ create_env_file() {
         BACKUP_ENV="${ENV_FILE}.backup.${TIMESTAMP}"
         cp "$ENV_FILE" "$BACKUP_ENV"
         log "Backed up existing .env to ${BACKUP_ENV}"
-        # Now point ENV_FILE at the backup so we merge into it
-        ENV_FILE="$BACKUP_ENV"
     else
         # No previous .env existed: we’ll just write directly to $ENV_FILE
         log "No existing .env found; creating new ENV_FILE at ${ENV_FILE}"
@@ -682,7 +680,7 @@ EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
 EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
 EOF
 
-    log "Merged environment written to ${ENV_FILE}"
+    log "Environment configuration written to ${ENV_FILE}"
 }
 
 
@@ -1261,14 +1259,11 @@ uninstall_tofupilot() {
 
 # Show usage
 usage() {
-    echo "TofuPilot Self-Hosting Deployment Script"
-    echo "=========================="
-    echo
     echo "Usage: curl -sSL <installer-url> | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
     echo "  (no options)            Fresh TofuPilot installation (production)"
-    echo "  --dev                   Install development version (requires GitHub access)"
+    echo "  --development           Install development version (requires GitHub access)"
     echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
     echo
     echo "Service Management:"
@@ -1283,7 +1278,7 @@ usage() {
     echo
     echo "Examples:"
     echo "  curl -sSL <url> | bash                    # Fresh installation (production)"
-    echo "  curl -sSL <url> | bash -s -- --dev       # Development installation"
+    echo "  curl -sSL <url> | bash -s -- --development # Development installation"
     echo "  curl -sSL <url> | bash -s -- --env-file /path/to/custom.env # Use existing env"
     echo
     echo "  curl -sSL <url> | bash -s -- --status    # Check deployment status"
@@ -1324,23 +1319,12 @@ while [ $# -gt 0 ]; do
 
             shift
             ;;
-        --dev)
+        --development)
             DEV_MODE="true"
             shift
             ;;
 
 
-        --show-live-logs)
-            SHOW_LIVE_LOGS="true"
-            shift
-            ;;
-        --update) 
-            [ ! -f "$COMPOSE_FILE" ] && error "No deployment found. Cannot update."
-            [ -f "$ENV_FILE" ] && set -a && source "$ENV_FILE" && set +a
-            log "🔄 Starting update process..."
-            deploy
-            exit 0
-            ;;
         --status)
             show_status
             exit 0
@@ -1396,10 +1380,8 @@ echo
 step "3/5: configuration"
 if [ -n "$CUSTOM_ENV_FILE" ]; then
     log "Using provided .env file; skipping interactive configuration."
-    collect_config
-else
-    collect_config
 fi
+collect_config
 
 echo
 step "4/5: deployment"
@@ -1408,12 +1390,5 @@ deploy
 step "5/5: complete"
 show_info
 
-
-if [ "$SHOW_LIVE_LOGS" = "true" ]; then
-    echo
-    info "Showing live logs (press Ctrl+C to exit)..."
-    echo
-    docker compose -f "$COMPOSE_FILE" logs -f
-fi
 
 echo
