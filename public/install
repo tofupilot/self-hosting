@@ -187,7 +187,6 @@ check_all_required_vars() {
     local required_vars=(
         "DOMAIN_NAME"
         "STORAGE_DOMAIN_NAME"
-        "ACME_EMAIL"
     )
 
     local all_valid=true
@@ -200,6 +199,15 @@ check_all_required_vars() {
             validation_errors+=("Missing required variable: $var")
         fi
     done
+
+    # Check ACME_EMAIL only if using Let's Encrypt
+    local ssl_mode=$(get_env_value "SSL_MODE")
+    if [ "${ssl_mode:-letsencrypt}" = "letsencrypt" ]; then
+        if [ -z "$(get_env_value "ACME_EMAIL")" ]; then
+            all_valid=false
+            validation_errors+=("Missing required variable: ACME_EMAIL (required for Let's Encrypt SSL)")
+        fi
+    fi
 
     # Check authentication methods - at least one must be configured
     local google_id=$(get_env_value "AUTH_GOOGLE_ID")
@@ -233,7 +241,7 @@ check_all_required_vars() {
     # Print validation results if there are errors
     if [ "$all_valid" = "false" ]; then
         echo
-        error "Environment validation failed:"
+        echo -e "${RED}✗ Environment validation failed:${NC}"
         for error in "${validation_errors[@]}"; do
             echo "  $error"
         done
@@ -1334,7 +1342,9 @@ while [ $# -gt 0 ]; do
             info "Using custom env file: $ENV_FILE"
 
             if ! check_all_required_vars; then
-                error "Custom env file validation failed. See details above."
+                echo
+                echo -e "${RED}✗ Custom env file validation failed. Please fix the issues above and try again.${NC}"
+                exit 1
             fi
 
             set -a
