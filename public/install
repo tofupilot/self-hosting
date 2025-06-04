@@ -803,35 +803,25 @@ collect_config() {
     echo "Security Configuration:"
     info "Generating secure passwords automatically..."
 
-    # ────────────────────────────────────────────────────────────────────────────────
-    # Always generate AUTH_SECRET here—ignore any AUTH_SECRET in .env
-    # ────────────────────────────────────────────────────────────────────────────────
+    # Auto-generated security credentials (cannot be overridden by user)
     AUTH_SECRET=$(generate_password)
-    log "Generated Auth secret (ignoring any user‐provided value)"
+    log "Generated authentication secret"
 
-    # Database defaults
+    # Auto-generated database configuration (cannot be overridden by user)
     GEL_USER="edgedb"
     GEL_DATABASE="main"
     GEL_HOST="tofupilot-database"
     GEL_PORT="5656"
     GEL_CLIENT_TLS_SECURITY="insecure"
-    
-    # ────────────────────────────────────────────────────────────────────────────────
-    # Always generate GEL_PASSWORD here—ignore any GEL_PASSWORD in .env
-    # ────────────────────────────────────────────────────────────────────────────────
     GEL_PASSWORD=$(generate_password)
-    log "Generated database password (ignoring any user‐provided value)"
+    log "Generated database credentials"
 
-    # Storage defaults
+    # Auto-generated storage configuration (cannot be overridden by user)
     S3_ACCESS_KEY_ID="tofupilot"
     S3_BUCKET_NAME="tofupilot"
     S3_REGION="us-east-1"
-    
-    # ────────────────────────────────────────────────────────────────────────────────
-    # Always generate S3_SECRET_ACCESS_KEY here—ignore any user‐provided value
-    # ────────────────────────────────────────────────────────────────────────────────
     S3_SECRET_ACCESS_KEY=$(generate_password)
-    log "Generated storage secret key (ignoring any user‐provided value)"
+    log "Generated storage credentials"
 
     echo
     echo "Authentication Configuration (required - choose at least one):"
