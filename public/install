@@ -21,6 +21,7 @@ ENV_FILE="$SCRIPT_DIR/.env"
 
 # Options
 CUSTOM_ENV_FILE=""
+INSTALLER_URL="https://tofupilot.sh"
 
 # Terminal color definitions
 RED='\033[0;31m'; GREEN='\033[1;32m'; NC='\033[0m'
@@ -1066,7 +1067,7 @@ show_info() {
     echo "  • View logs:    docker compose logs -f"
     echo "  • Stop:         docker compose down"
     echo "  • Restart:      docker compose restart"
-    echo "  • Status:       curl -sSL <installer-url> | bash -s -- --status"
+    echo "  • Status:       curl -sSL ${INSTALLER_URL} | bash -s -- --status"
     echo
 }
 
@@ -1259,7 +1260,7 @@ uninstall_tofupilot() {
 
 # Show usage
 usage() {
-    echo "Usage: curl -sSL <installer-url> | bash -s -- [OPTIONS]"
+    echo "Usage: curl -sSL ${INSTALLER_URL} | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
     echo "  (no options)            Fresh TofuPilot installation (production)"
@@ -1277,13 +1278,13 @@ usage() {
     echo "  --help                  Show this help message"
     echo
     echo "Examples:"
-    echo "  curl -sSL <url> | bash                    # Fresh installation (production)"
-    echo "  curl -sSL <url> | bash -s -- --development # Development installation"
-    echo "  curl -sSL <url> | bash -s -- --env-file /path/to/custom.env # Use existing env"
+    echo "  curl -sSL ${INSTALLER_URL} | bash                    # Fresh installation (production)"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development # Development installation"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file /path/to/custom.env # Use existing env"
     echo
-    echo "  curl -sSL <url> | bash -s -- --status    # Check deployment status"
-    echo "  curl -sSL <url> | bash -s -- --logs app  # Show application logs"
-    echo "  curl -sSL <url> | bash -s -- --uninstall # Completely remove TofuPilot"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status    # Check deployment status"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --logs app  # Show application logs"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
