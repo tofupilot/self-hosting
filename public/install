@@ -40,10 +40,19 @@ show_banner() {
 #----------------------------#
 #         Functions          #
 #----------------------------#
+# Log success message with checkmark icon
 log(){ echo -e "${GREEN}✓ $1${NC}"; }
+
+# Display warning message with warning icon
 warn(){ echo -e "${BRAND_GOLD}! $1${NC}"; }
+
+# Display error message and exit script
 error(){ echo -e "${RED}✗ $1${NC}"; exit 1; }
+
+# Display informational message with arrow icon
 info(){ echo -e "${BRAND_BLUE}→ $1${NC}"; }
+
+# Display step header with decorative separator
 step(){ 
     echo
     echo -e "${BRAND_GOLD}Step $1${NC}"
@@ -51,11 +60,14 @@ step(){
     echo
 }
 
+# Check if command exists in system PATH
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
+
+# Generate secure random password for services
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
 # Configuration Schema - Single source of truth for field definitions
-# Using bash-compatible approach instead of associative arrays
+# Uses bash-compatible approach instead of associative arrays
 
 # Get field configuration by name
 get_field_config() {
@@ -187,7 +199,7 @@ is_field_required() {
     esac
 }
 
-# Generate empty .env template
+# Generate empty .env template file for user configuration
 generate_env_template() {
     local template_file="my-tofupilot-config.env"
     
@@ -244,7 +256,7 @@ EOF
     echo "  2. Run script: curl -sSL ${INSTALLER_URL} | bash -s -- --env-file $template_file"
 }
 
-# Environment variable retrieval utility
+# Retrieve environment variable value from .env files
 get_env_value() {
     local var_name="$1"
     local value=""
@@ -434,7 +446,7 @@ check_all_required_vars() {
 }
 
 
-# Test SMTP connection
+# Test SMTP connection with provided credentials
 test_smtp_connection() {
     local host="$1"
     local port="$2"
@@ -534,7 +546,7 @@ EOF
     return 0
 }
 
-# Container Image Access Verification (Production)
+# Container image access verification (Production)
 verify_image_access() {
     info "Verifying TofuPilot image access..."
     
@@ -546,7 +558,7 @@ verify_image_access() {
     fi
 }
 
-# GitHub Authentication and Registry Access Verification (Development)
+# GitHub authentication and registry access verification (Development)
 github_auth() {
     # If GITHUB_TOKEN is already set (e.g. from --env-file), do non-interactive login:
     if [ -n "${GITHUB_TOKEN:-}" ]; then
@@ -631,7 +643,7 @@ github_auth() {
 
 
 
-# System Prerequisites and Dependency Validation
+# System prerequisites and dependency validation
 check_requirements() {
     info "Performing system requirements validation"
     
@@ -693,7 +705,6 @@ check_requirements() {
         log "Architecture (AMD64)"
     fi
 }
-# Generate Docker Compose configuration for containerized deployment
 # Generate Docker Compose configuration for containerized deployment
 create_compose_file() {
   log "Creating Docker Compose configuration..."
@@ -985,7 +996,7 @@ EOF
 }
 
 # Generate application environment configuration
-# Always create .env file for secrets storage, even with custom env files
+# Always creates .env file for secrets storage, even with custom env files
 create_env_file() {
     if [ -n "$CUSTOM_ENV_FILE" ]; then
         info "Creating .env file for auto-generated secrets (custom config: $CUSTOM_ENV_FILE)"
@@ -1098,7 +1109,7 @@ EOF
     fi
 }
 
-# Configuration loading (from file or interactive)
+# Load configuration from file or interactive prompts
 load_config() {
     # Flag to track if config came from complete file vs interactive
     CONFIG_FROM_FILE=false
@@ -1382,7 +1393,7 @@ load_config() {
     log "Configuration complete"
 }
 
-# Validate configuration
+# Validate configuration based on requirements
 validate_config() {
     if [ "$CONFIG_FROM_FILE" = "true" ]; then
         info "Validating file-based configuration"
@@ -1399,7 +1410,7 @@ validate_config() {
 }
 
 
-# Deploy the application
+# Deploy the application with Docker Compose
 deploy() {
     log "Starting deployment process..."
     
@@ -1456,7 +1467,7 @@ deploy() {
     fi
 }
 
-# Show deployment information
+# Show deployment information and next steps
 show_info() {
     info "What was deployed:"
     if [ "$DEV_MODE" = "true" ]; then
@@ -1473,100 +1484,35 @@ show_info() {
         echo "  • Let's Encrypt SSL certificates"
     fi
     echo
-    info "Your TofuPilot instance will be accessible at: https://${DOMAIN_NAME}"
-    echo
-    
-    warn "Database Migration Notice:"
-    echo "If this is your first TofuPilot installation, the database needs to migrate to"
-    echo "the latest schema version. This process may take up to 5 minutes."
-    echo "Monitor migration progress: curl -sSL ${INSTALLER_URL} | bash -s -- --logs app"
-    echo
-    
-    warn "Complete setup if not done already:"
-    if [ -n "$AUTH_GOOGLE_ID" ]; then
-        echo "  • Google OAuth: Configure redirect URI:"
-        echo "    https://${DOMAIN_NAME}/api/auth/callback/google"
-    fi
-    if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
-        echo "  • Microsoft Entra ID: Configure redirect URI:"
-        echo "    https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id"
-    fi
-    echo "  • Configure firewall: https://tofupilot.com/self-hosting/firewall"
-    echo "  • Configure backups: https://tofupilot.com/self-hosting/backup"
-    echo
     info "Management commands:"
-    echo "  • Check status: curl -sSL ${INSTALLER_URL} | bash -s -- --status"
+    echo "  • Check status: docker compose ps"
     echo "  • View logs:    docker compose logs -f"
     echo "  • Restart:      docker compose restart"
     echo "  • Stop:         docker compose down"
     echo "  • Start:        docker compose up -d"
     echo
+    
+    info "Next steps:"
+    echo "  • Monitor app installation: docker compose logs -f app"
+    echo "  • Your app will be available at: https://${DOMAIN_NAME}"
+    if [ -n "$AUTH_GOOGLE_ID" ]; then
+        echo "  • Configure Google OAuth redirect URI:"
+        echo "    https://${DOMAIN_NAME}/api/auth/callback/google"
+    fi
+    if [ -n "$AUTH_MICROSOFT_ENTRA_ID_ID" ]; then
+        echo "  • Configure Microsoft Entra ID redirect URI:"
+        echo "    https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id"
+    fi
+    echo "  • Recommended: configure firewall (https://tofupilot.com/self-hosting/firewall)"
+    echo "  • Recommended: configure backups (https://tofupilot.com/self-hosting/backup)"
+    echo
 }
 
 
 
-# Show service status
-show_status() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    log "Checking TofuPilot service status..."
-    echo
-    echo "TofuPilot Service Status"
-    echo "======================="
-    echo
-    
-    # Show docker-compose status (TofuPilot containers only)
-    info "Docker Container Status:"
-    docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep tofupilot
-    
-    info "Data Volumes:"
-    local volumes=$(docker system df -v 2>/dev/null | grep -E "(root_tofupilot-database-data|root_tofupilot-storage-data|root_tofupilot-proxy-acme)" | awk '{print $1 " " $3}')
-    if [ -n "$volumes" ]; then
-        echo "$volumes" | while read name size; do
-            echo "  $name: $size"
-        done
-    fi
-    
-    echo
-    echo "Health Checks:"
-    
-    # Source environment for domain names
-    if [ -f "$ENV_FILE" ]; then
-        set -a
-        source "$ENV_FILE"
-        set +a
-    fi
-    
-    # Check if main app is responding
-    info "Testing main application..."
-    if curl -f -s -I "https://${DOMAIN_NAME:-localhost}" >/dev/null 2>&1; then
-        echo "✓ Main application: healthy (https://${DOMAIN_NAME:-localhost})"
-    elif curl -f -s -I "http://${DOMAIN_NAME:-localhost}" >/dev/null 2>&1; then
-        echo "~ Main application: accessible (SSL provisioning)"
-    else
-        echo "✗ Main application: not responding"
-    fi
-    
-    # Check storage
-    info "Testing storage service..."
-    if curl -f -s -I "https://${STORAGE_DOMAIN_NAME:-storage.localhost}" >/dev/null 2>&1; then
-        echo "✓ Storage: healthy (https://${STORAGE_DOMAIN_NAME:-storage.localhost})"
-    elif curl -f -s -I "http://${STORAGE_DOMAIN_NAME:-storage.localhost}" >/dev/null 2>&1; then
-        echo "~ Storage: accessible (SSL provisioning)"  
-    else
-        echo "✗ Storage: not responding"
-    fi
-    
-    echo
-    echo "URLs:"
-    echo "  Main app: https://${DOMAIN_NAME:-localhost}"
-    echo "  Storage:  https://${STORAGE_DOMAIN_NAME:-storage.localhost}"
-}
 
 
-# Uninstall TofuPilot completely
+# Uninstall TofuPilot completely with confirmation prompts
 uninstall_tofupilot() {
     echo
     echo "=========================================="
@@ -1639,7 +1585,7 @@ uninstall_tofupilot() {
     echo
 }
 
-# Show usage
+# Show usage information and command examples
 usage() {
     echo "Usage: curl -sSL ${INSTALLER_URL} | bash -s -- [OPTIONS]"
     echo
@@ -1650,7 +1596,6 @@ usage() {
     echo "  --generate-env            Generate empty .env template file"
     echo
     echo "Service Management:"
-    echo "  --status                  Show service status and health"
     echo "  --uninstall               Completely remove TofuPilot (with confirmation)"
     echo "  --help                    Show this help message"
     echo
@@ -1660,7 +1605,6 @@ usage() {
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env  # Use existing env"
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --generate-env         # Generate .env template"
     echo
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status               # Check deployment status"
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall            # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
@@ -1693,10 +1637,6 @@ while [ $# -gt 0 ]; do
             ;;
         --generate-env)
             generate_env_template
-            exit 0
-            ;;
-        --status)
-            show_status
             exit 0
             ;;
         --uninstall)
