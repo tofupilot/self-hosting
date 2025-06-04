@@ -794,8 +794,16 @@ EOF
     ports:
       - "80:80"
       - "443:443"
+EOF
+
+  if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
+    cat >> "$COMPOSE_FILE" <<EOF
     environment:
       - ACME_EMAIL=${SSL_LETSENCRYPT_EMAIL}
+EOF
+  fi
+
+  cat >> "$COMPOSE_FILE" <<EOF
     networks:
       - tofupilot
 
