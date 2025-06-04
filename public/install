@@ -706,10 +706,31 @@ create_compose_file() {
     info "Removed existing docker-compose.yml file"
   fi
   
-  # Generate passwords once for this deployment (must be exported for template)
-  export AUTH_SECRET=$(generate_password)
-  export GEL_PASSWORD=$(generate_password)
-  export S3_SECRET_ACCESS_KEY=$(generate_password)
+  # Generate or reuse passwords for this deployment (must be exported for template)
+  # Check if passwords already exist in .env file, generate only if missing
+  export AUTH_SECRET=$(get_env_value "AUTH_SECRET")
+  if [ -z "$AUTH_SECRET" ]; then
+    export AUTH_SECRET=$(generate_password)
+    info "Generated new AUTH_SECRET"
+  else
+    info "Using existing AUTH_SECRET"
+  fi
+  
+  export GEL_PASSWORD=$(get_env_value "GEL_PASSWORD")
+  if [ -z "$GEL_PASSWORD" ]; then
+    export GEL_PASSWORD=$(generate_password)
+    info "Generated new GEL_PASSWORD"
+  else
+    info "Using existing GEL_PASSWORD"
+  fi
+  
+  export S3_SECRET_ACCESS_KEY=$(get_env_value "S3_SECRET_ACCESS_KEY")
+  if [ -z "$S3_SECRET_ACCESS_KEY" ]; then
+    export S3_SECRET_ACCESS_KEY=$(generate_password)
+    info "Generated new S3_SECRET_ACCESS_KEY"
+  else
+    info "Using existing S3_SECRET_ACCESS_KEY"
+  fi
 
   cat > "$COMPOSE_FILE" <<EOF
 
@@ -964,6 +985,14 @@ create_env_file() {
     fi
     
     cat > "$ENV_FILE" <<EOF
+# ==========================================
+# TofuPilot Self-Hosting Configuration
+# AUTO-GENERATED FILE - DO NOT DELETE
+# ==========================================
+# This file contains auto-generated passwords and secrets.
+# Deleting this file will cause service authentication failures.
+# The installer will reuse existing values when re-run.
+
 # Domain Configuration
 DOMAIN_NAME=${DOMAIN_NAME}
 STORAGE_DOMAIN_NAME=${STORAGE_DOMAIN_NAME}
@@ -974,7 +1003,7 @@ SSL_MODE=${SSL_MODE:-letsencrypt}
 SSL_CERT_PATH=${SSL_CERT_PATH:-}
 SSL_KEY_PATH=${SSL_KEY_PATH:-}
 
-# Authentication Configuration (user-configurable only)
+# Authentication Configuration
 AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID:-}
 AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET:-}
 AUTH_MICROSOFT_ENTRA_ID_ID=${AUTH_MICROSOFT_ENTRA_ID_ID:-}
@@ -987,6 +1016,11 @@ EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
 EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
 EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
 EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
+
+# Auto-generated secrets (DO NOT MODIFY - generated automatically by installer)
+AUTH_SECRET=${AUTH_SECRET}
+GEL_PASSWORD=${GEL_PASSWORD}
+S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
 EOF
 
     log "Environment configuration written to ${ENV_FILE}"
@@ -994,8 +1028,15 @@ EOF
 
 
 # Save current configuration variables to .env file during interactive setup
+# Partial config excludes auto-generated secrets since full .env is saved before docker commands
 save_partial_config() {
     cat > "$ENV_FILE" <<EOF
+# ==========================================
+# TofuPilot Self-Hosting Configuration
+# PARTIAL CONFIG - AUTO-GENERATED FILE
+# ==========================================
+# This file will be completed with auto-generated secrets during deployment.
+
 # Domain Configuration
 DOMAIN_NAME=${DOMAIN_NAME:-}
 STORAGE_DOMAIN_NAME=${STORAGE_DOMAIN_NAME:-}
