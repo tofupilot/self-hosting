@@ -763,6 +763,8 @@ EOF
       - "443:443"
     environment:
       - ACME_EMAIL=${SSL_LETSENCRYPT_EMAIL}
+    networks:
+      - tofupilot
 
   # TofuPilot Application
   tofupilot-app:
@@ -831,11 +833,15 @@ EOF
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls=true"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
+    networks:
+      - tofupilot
 EOF
   else
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls.certresolver=letsencrypt"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
+    networks:
+      - tofupilot
 EOF
   fi
 
@@ -857,6 +863,8 @@ EOF
       - tofupilot-database-data:/var/lib/gel/data
     ports:
       - "127.0.0.1:5656:5656"
+    networks:
+      - tofupilot
 
   # Object Storage (MinIO)
   tofupilot-storage:
@@ -881,15 +889,23 @@ EOF
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls=true"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
+    networks:
+      - tofupilot
 EOF
   else
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
+    networks:
+      - tofupilot
 EOF
   fi
 
   cat >> "$COMPOSE_FILE" <<'EOF'
+
+networks:
+  tofupilot:
+    driver: bridge
 
 volumes:
   tofupilot-database-data:
