@@ -495,9 +495,9 @@ create_compose_file() {
   fi
   
   # Generate passwords once for consistency across services
-  AUTH_SECRET=$(generate_password)
-  GEL_PASSWORD=$(generate_password)
-  S3_SECRET_ACCESS_KEY=$(generate_password)
+  export AUTH_SECRET=$(generate_password)
+  export GEL_PASSWORD=$(generate_password)
+  export S3_SECRET_ACCESS_KEY=$(generate_password)
 
   cat > "$COMPOSE_FILE" <<EOF
 
