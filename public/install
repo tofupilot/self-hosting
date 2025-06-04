@@ -762,7 +762,7 @@ EOF
       - "80:80"
       - "443:443"
     environment:
-      - SSL_LETSENCRYPT_EMAIL=${SSL_LETSENCRYPT_EMAIL}
+      - ACME_EMAIL=${SSL_LETSENCRYPT_EMAIL}
 
   # TofuPilot Application
   tofupilot-app:
