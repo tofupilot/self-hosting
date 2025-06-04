@@ -218,7 +218,19 @@ EOF
     return 0
 }
 
-# GitHub Authentication and Registry Access Verification
+# Container Image Access Verification (Production)
+verify_image_access() {
+    info "Verifying TofuPilot image access..."
+    
+    # Test pulling TofuPilot production image (should be publicly available)
+    if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
+        log "TofuPilot production image access confirmed"
+    else
+        error "Cannot pull ghcr.io/tofupilot/tofupilot:latest. Please check your internet connection."
+    fi
+}
+
+# GitHub Authentication and Registry Access Verification (Development)
 github_auth() {
     # If GITHUB_USERNAME and GITHUB_TOKEN are already set (e.g. from --env-file), do non-interactive login:
     if [ -n "${GITHUB_USERNAME:-}" ] && [ -n "${GITHUB_TOKEN:-}" ]; then
@@ -240,11 +252,11 @@ github_auth() {
             error "Docker login to ghcr.io failed using GITHUB_USERNAME/GITHUB_TOKEN."
         fi
 
-        # 3) Test pulling TofuPilot image
-        if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
-            log "TofuPilot image access confirmed"
+        # 3) Test pulling TofuPilot development image
+        if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot-dev:latest >/dev/null 2>&1; then
+            log "TofuPilot development image access confirmed"
         else
-            error "Cannot pull ghcr.io/tofupilot/tofupilot:latest. Check your GHCR permissions."
+            error "Cannot pull ghcr.io/tofupilot/tofupilot-dev:latest. Check your GHCR permissions."
         fi
 
         return
@@ -295,10 +307,10 @@ github_auth() {
     fi
 
     # Test image pull
-    if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot:latest >/dev/null 2>&1; then
-        log "TofuPilot image access"
+    if docker pull --platform linux/amd64 ghcr.io/tofupilot/tofupilot-dev:latest >/dev/null 2>&1; then
+        log "TofuPilot development image access"
     else
-        error "Unable to access TofuPilot container image. Please verify your repository access permissions"
+        error "Unable to access TofuPilot development container image. Please verify your repository access permissions"
     fi
 
     log "Authentication complete"
@@ -434,7 +446,20 @@ EOF
   # TofuPilot Application
   tofupilot-app:
     platform: linux/amd64
+EOF
+
+  # Add the appropriate image based on mode
+  if [ "$DEV_MODE" = "true" ]; then
+    cat >> "$COMPOSE_FILE" <<EOF
+    image: ghcr.io/tofupilot/tofupilot-dev:latest
+EOF
+  else
+    cat >> "$COMPOSE_FILE" <<EOF
     image: ghcr.io/tofupilot/tofupilot:latest
+EOF
+  fi
+
+  cat >> "$COMPOSE_FILE" <<EOF
     container_name: tofupilot-app
     restart: unless-stopped
     depends_on:
@@ -1224,8 +1249,8 @@ usage() {
     echo "Usage: curl -sSL <installer-url> | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
-    echo "  (no options)            Fresh TofuPilot installation"
-    echo ""
+    echo "  (no options)            Fresh TofuPilot installation (production)"
+    echo "  --dev                   Install development version (requires GitHub access)"
     echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
     echo
     echo "Service Management:"
@@ -1239,8 +1264,8 @@ usage() {
     echo "  --help                  Show this help message"
     echo
     echo "Examples:"
-    echo "  curl -sSL <url> | bash                    # Fresh installation"
-    echo ""
+    echo "  curl -sSL <url> | bash                    # Fresh installation (production)"
+    echo "  curl -sSL <url> | bash -s -- --dev       # Development installation"
     echo "  curl -sSL <url> | bash -s -- --env-file /path/to/custom.env # Use existing env"
     echo
     echo "  curl -sSL <url> | bash -s -- --status    # Check deployment status"
@@ -1255,6 +1280,7 @@ usage() {
 #----------------------------#
 
 # Initialize variables
+DEV_MODE="false"
 
 # Show banner for all operations
 show_banner
@@ -1278,6 +1304,10 @@ while [ $# -gt 0 ]; do
             set +a
             log "Loaded custom environment from $ENV_FILE"
 
+            shift
+            ;;
+        --dev)
+            DEV_MODE="true"
             shift
             ;;
 
@@ -1335,8 +1365,14 @@ step "1/6: PRE-FLIGHT CHECKS"
 check_requirements
 
 echo
-step "2/6: GITHUB AUTHENTICATION"
-github_auth
+step "2/6: IMAGE ACCESS VERIFICATION"
+if [ "$DEV_MODE" = "true" ]; then
+    info "Development mode enabled - using private repository"
+    github_auth
+else
+    info "Production mode - using public repository"
+    verify_image_access
+fi
 
 echo
 step "3/6: CONFIGURATION"
