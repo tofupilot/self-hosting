@@ -495,9 +495,9 @@ create_compose_file() {
   fi
   
   # Generate passwords once for consistency across services
-  local AUTH_SECRET=$(generate_password)
-  local GEL_PASSWORD=$(generate_password)
-  local S3_SECRET_ACCESS_KEY=$(generate_password)
+  AUTH_SECRET=$(generate_password)
+  GEL_PASSWORD=$(generate_password)
+  S3_SECRET_ACCESS_KEY=$(generate_password)
 
   cat > "$COMPOSE_FILE" <<EOF
 
@@ -593,7 +593,7 @@ EOF
       - GEL_DATABASE=main
       - GEL_HOST=tofupilot-database
       - GEL_PORT=5656
-      - GEL_CLIENT_TLS_SECURITY=insecure
+      - GEL_CLIENT_TLS_SECURITY=insecure_dev_mode
       
       # Storage Configuration (hardcoded)
       - S3_ACCESS_KEY_ID=tofupilot
@@ -639,7 +639,7 @@ EOF
       - GEL_PASSWORD=${GEL_PASSWORD}
       - GEL_DATABASE=main
       - GEL_SERVER_TLS_CERT_MODE=generate_self_signed
-      - GEL_SERVER_SECURITY=insecure_dev_mode
+      - GEL_SERVER_SECURITY=insecure
     volumes:
       - tofupilot-database-data:/var/lib/gel/data
     ports:
