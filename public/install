@@ -878,17 +878,12 @@ EOF
 # Generate application environment configuration
 # Generate application environment configuration
 create_env_file() {
-    info "Creating environment file (backed up, merged into a new file)..."
+    info "Creating environment file..."
     
-    # If the user already had an .env, back it up to a timestamped file
     if [ -f "$ENV_FILE" ]; then
-        TIMESTAMP=$(date +%s)
-        BACKUP_ENV="${ENV_FILE}.backup.${TIMESTAMP}"
-        cp "$ENV_FILE" "$BACKUP_ENV"
-        log "Backed up existing .env to ${BACKUP_ENV}"
+        log "Updating existing .env file"
     else
-        # No previous .env existed: we’ll just write directly to $ENV_FILE
-        log "No existing .env found; creating new ENV_FILE at ${ENV_FILE}"
+        log "Creating new .env file"
     fi
     
     cat > "$ENV_FILE" <<EOF
@@ -1387,6 +1382,7 @@ uninstall_tofupilot() {
     
     echo
     step "1/6: Stopping services"
+    info "Gracefully shutting down all TofuPilot containers..."
     if [ -f "$COMPOSE_FILE" ]; then
         docker compose -f "$COMPOSE_FILE" down -v 2>/dev/null || docker-compose -f "$COMPOSE_FILE" down -v 2>/dev/null || true
         log "Services stopped"
@@ -1395,23 +1391,28 @@ uninstall_tofupilot() {
     fi
     
     step "2/6: Removing containers"
+    info "Deleting all TofuPilot container instances..."
     docker ps -a --filter "name=tofupilot" --format "{{.Names}}" | xargs -r docker rm -f 2>/dev/null || true
     log "Containers removed"
     
     step "3/6: Removing volumes"
+    info "Permanently deleting all data volumes (database and storage)..."
     docker volume ls --filter "name=tofupilot" --format "{{.Name}}" | xargs -r docker volume rm 2>/dev/null || true
     docker volume ls --filter "name=root" --format "{{.Name}}" | grep -E "(tofupilot-database-data|tofupilot-storage-data|tofupilot-proxy-acme)" | xargs -r docker volume rm 2>/dev/null || true
     log "Volumes removed"
     
     step "4/6: Removing configuration"
-    rm -f "$ENV_FILE" "$COMPOSE_FILE" "${ENV_FILE}.backup."* 2>/dev/null || true
+    info "Cleaning up environment and configuration files..."
+    rm -f "$ENV_FILE" "$COMPOSE_FILE" 2>/dev/null || true
     log "Configuration files removed"
     
     step "5/6: Cleaning docker system"
+    info "Removing orphaned containers and unused Docker resources..."
     docker system prune -f --volumes 2>/dev/null || true
     log "Docker system cleaned"
     
     step "6/6: Removing images"
+    info "Deleting TofuPilot container images from local registry..."
     docker images --filter "reference=ghcr.io/tofupilot/*" --format "{{.Repository}}:{{.Tag}}" | xargs -r docker rmi 2>/dev/null || true
     log "Images removed"
     
