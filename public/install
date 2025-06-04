@@ -156,22 +156,17 @@ check_all_required_vars() {
         has_auth=true
     fi
     
-    # Check SSL configuration - auto-detect custom mode from cert paths
+    # Check SSL configuration if custom mode is specified
     local ssl_mode=$(get_env_value "SSL_MODE")
-    local ssl_cert_path=$(get_env_value "SSL_CERT_PATH")
-    local ssl_key_path=$(get_env_value "SSL_KEY_PATH")
     local ssl_valid=true
-    
-    # If certificate paths are provided, assume custom mode
-    if [ -n "$ssl_cert_path" ] || [ -n "$ssl_key_path" ]; then
+    if [ "$ssl_mode" = "custom" ]; then
+        local ssl_cert_path=$(get_env_value "SSL_CERT_PATH")
+        local ssl_key_path=$(get_env_value "SSL_KEY_PATH")
         if [ -z "$ssl_cert_path" ] || [ -z "$ssl_key_path" ]; then
             ssl_valid=false
         elif [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
             ssl_valid=false
         fi
-    elif [ "$ssl_mode" = "custom" ]; then
-        # SSL_MODE=custom but no paths provided
-        ssl_valid=false
     fi
 
     if [ "$missing" = "false" ] && [ "$has_auth" = "true" ] && [ "$ssl_valid" = "true" ]; then
@@ -419,7 +414,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - ${SSL_CERT_PATH}:/certs/tls.crt:ro
       - ${SSL_KEY_PATH}:/certs/tls.key:ro
@@ -522,7 +517,7 @@ EOF
       - "traefik.http.routers.tofupilot-app.entrypoints=websecure"
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls=true"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
@@ -571,7 +566,7 @@ EOF
       - "traefik.http.routers.tofupilot-storage.entrypoints=websecure"
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls=true"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
@@ -597,7 +592,7 @@ EOF
   fi
 
   # Create TLS configuration file for custom certificates
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
     create_traefik_tls_config
   fi
 
