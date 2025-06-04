@@ -11,7 +11,7 @@ BASH_SOURCE_PATH="${BASH_SOURCE[0]}"
 if [[ "$BASH_SOURCE_PATH" =~ ^/dev/fd/ ]] || [[ "$BASH_SOURCE_PATH" =~ ^/proc/self/fd/ ]] || [[ ! -f "$BASH_SOURCE_PATH" ]]; then
     # Remote execution detected - using current working directory
     SCRIPT_DIR="$(pwd)"
-    echo "→ Running from remote installer"
+    echo "→ Running from remote deployment script"
 else
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 fi
@@ -21,7 +21,7 @@ ENV_FILE="$SCRIPT_DIR/.env"
 
 # Options
 CUSTOM_ENV_FILE=""
-INSTALLER_URL="https://tofupilot.sh/install"
+INSTALLER_URL="https://tofupilot.sh/deploy"
 
 # Terminal color definitions
 RED='\033[0;31m'; GREEN='\033[1;32m'; NC='\033[0m'
@@ -33,7 +33,7 @@ BRAND_GOLD='\033[38;2;234;179;8m'     # Yellow-500
 show_banner() {
     echo
     echo -e " ${BRAND_BLUE}╭${NC} ${BRAND_GOLD}✈${NC} ${BRAND_BLUE}╮${NC}"
-    echo -e " ${NC}[•ᴗ•] TofuPilot Self-Hosting Installer${NC}"
+    echo -e " ${NC}[•ᴗ•] TofuPilot Self-Hosting Deployment${NC}"
     echo
 }
 
@@ -1020,7 +1020,7 @@ create_env_file() {
 # ==========================================
 # This file contains auto-generated passwords and secrets.
 # Deleting this file will cause service authentication failures.
-# The installer will reuse existing values when re-run.
+# The deployment script will reuse existing values when re-run.
 $([ -n "$CUSTOM_ENV_FILE" ] && echo "# User configuration loaded from: $CUSTOM_ENV_FILE")
 
 # Domain Configuration
@@ -1047,7 +1047,7 @@ EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
 EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
 EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
 
-# Auto-generated secrets (DO NOT MODIFY - generated automatically by installer)
+# Auto-generated secrets (DO NOT MODIFY - generated automatically by deployment script)
 AUTH_SECRET=${AUTH_SECRET}
 GEL_PASSWORD=${GEL_PASSWORD}
 S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
@@ -1101,7 +1101,7 @@ EOF
     if [ -n "$existing_auth_secret" ] || [ -n "$existing_gel_password" ] || [ -n "$existing_s3_secret" ]; then
         cat >> "$ENV_FILE" <<EOF
 
-# Auto-generated secrets (DO NOT MODIFY - generated automatically by installer)
+# Auto-generated secrets (DO NOT MODIFY - generated automatically by deployment script)
 ${existing_auth_secret:+AUTH_SECRET=$existing_auth_secret}
 ${existing_gel_password:+GEL_PASSWORD=$existing_gel_password}
 ${existing_s3_secret:+S3_SECRET_ACCESS_KEY=$existing_s3_secret}
@@ -1368,7 +1368,7 @@ load_config() {
                     echo "  • Check your username and password"
                     echo "  • Ensure your account has SMTP sending permissions"
                     echo
-                    echo "Restart the installer to try again with corrected settings."
+                    echo "Restart the deployment script to try again with corrected settings."
                     exit 1
                 fi
             fi
@@ -1493,7 +1493,7 @@ show_info() {
     echo
     
     info "Next steps:"
-    echo "  • Monitor app installation: docker compose logs -f app"
+    echo "  • Monitor app deployment: docker compose logs -f app"
     echo "  • Your app will be available at: https://${DOMAIN_NAME}"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
         echo "  • Configure Google OAuth redirect URI:"
@@ -1590,8 +1590,8 @@ usage() {
     echo "Usage: curl -sSL ${INSTALLER_URL} | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
-    echo "  (no options)              Install/update production version"
-    echo "  --development             Install/update development version (requires GitHub access)"
+    echo "  (no options)              Deploy/update production version"
+    echo "  --development             Deploy/update development version (requires GitHub access)"
     echo "  --env-file <path>         Use a custom .env file (must contain all required variables)"
     echo "  --generate-env            Generate empty .env template file"
     echo
@@ -1600,8 +1600,8 @@ usage() {
     echo "  --help                    Show this help message"
     echo
     echo "Examples:"
-    echo "  curl -sSL ${INSTALLER_URL} | bash                              # Install/update production"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development          # Install/update development"
+    echo "  curl -sSL ${INSTALLER_URL} | bash                              # Deploy/update production"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development          # Deploy/update development"
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env  # Use existing env"
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --generate-env         # Generate .env template"
     echo
@@ -1655,7 +1655,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# Main installation flow
+# Main deployment flow
 
 step "1/6: System checks"
 check_requirements
