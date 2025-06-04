@@ -54,6 +54,64 @@ step(){
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
+# Generate empty .env template
+generate_env_template() {
+    local template_file=".env.template"
+    
+    cat > "$template_file" <<'EOF'
+# TofuPilot Self-Hosting Configuration
+# Copy this file to .env and fill in your values
+
+# Domain Configuration
+DOMAIN_NAME=
+STORAGE_DOMAIN_NAME=
+ACME_EMAIL=
+
+# SSL Configuration
+SSL_MODE=letsencrypt
+SSL_CERT_PATH=
+SSL_KEY_PATH=
+
+# Authentication Configuration
+AUTH_SECRET=
+AUTH_GOOGLE_ID=
+AUTH_GOOGLE_SECRET=
+AUTH_MICROSOFT_ENTRA_ID_ID=
+AUTH_MICROSOFT_ENTRA_ID_SECRET=
+AUTH_MICROSOFT_ENTRA_ID_ISSUER=
+
+# Database Configuration
+GEL_USER=
+GEL_PASSWORD=
+GEL_DATABASE=
+GEL_HOST=
+GEL_PORT=
+GEL_CLIENT_TLS_SECURITY=
+
+# Storage Configuration
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_BUCKET_NAME=
+S3_REGION=
+
+# Email Configuration
+EMAIL_SMTP_HOST=
+EMAIL_SMTP_PORT=587
+EMAIL_SMTP_USER=
+EMAIL_SMTP_PASSWORD=
+EMAIL_FROM_AUTH=
+
+# Development Mode (optional)
+# GITHUB_TOKEN=
+EOF
+
+    log "Generated empty .env template at: $template_file"
+    echo
+    info "Next steps:"
+    echo "  1. Copy template: cp $template_file .env"
+    echo "  2. Fill in your values in .env"
+    echo "  3. Run installer: curl -sSL ${INSTALLER_URL} | bash -s -- --env-file .env"
+}
 
 # Environment variable retrieval utility
 get_env_value() {
@@ -1221,6 +1279,7 @@ usage() {
     echo "  (no options)            Install/update production version"
     echo "  --development           Install/update development version (requires GitHub access)"
     echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
+    echo "  --generate-env          Generate empty .env template file"
     echo
     echo "Service Management:"
     echo "  --status                Show service status and health"
@@ -1231,6 +1290,7 @@ usage() {
     echo "  curl -sSL ${INSTALLER_URL} | bash                            # Install/update production"
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development        # Install/update development"
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env # Use existing env"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --generate-env       # Generate .env template"
     echo
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status             # Check deployment status"
     echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall          # Completely remove TofuPilot"
@@ -1273,8 +1333,10 @@ while [ $# -gt 0 ]; do
             DEV_MODE="true"
             shift
             ;;
-
-
+        --generate-env)
+            generate_env_template
+            exit 0
+            ;;
         --status)
             show_status
             exit 0
