@@ -1441,16 +1441,6 @@ deploy() {
     fi
     log "Services started"
 
-    # Ensure Docker network exists
-    docker network inspect tofupilot >/dev/null 2>&1 || docker network create tofupilot
-
-    # Wait until DNS resolves
-    info "Waiting for 'tofupilot-storage' DNS to be resolvable..."
-    until docker run --rm --network=tofupilot busybox nslookup tofupilot-storage >/dev/null 2>&1; do
-        sleep 2
-    done
-    log "'tofupilot-storage' is resolvable"
-
     # Wait for MinIO health to be ready
     info "Waiting for MinIO (tofupilot-storage) to be ready..."
     until docker exec tofupilot-storage curl -sf http://localhost:9000/minio/health/ready >/dev/null; do
@@ -1470,7 +1460,7 @@ deploy() {
             minio/mc mb -p local/tofupilot >/dev/null 2>&1; then
             log "MinIO bucket created"
         else
-            error "Failed to create MinIO bucket 'tofupilot'. Check DNS, credentials, and container logs."
+            error "Failed to create MinIO bucket 'tofupilot'. Check container logs and credentials."
         fi
     fi
 
