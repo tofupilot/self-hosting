@@ -494,6 +494,10 @@ create_compose_file() {
     info "Removed existing docker-compose.yml file"
   fi
   
+  # Generate passwords once for this deployment (must be exported for template)
+  export AUTH_SECRET=$(generate_password)
+  export GEL_PASSWORD=$(generate_password)
+  export S3_SECRET_ACCESS_KEY=$(generate_password)
 
   cat > "$COMPOSE_FILE" <<EOF
 
@@ -764,13 +768,11 @@ EOF
 
 
 # Interactive configuration collection and validation
-# Interactive configuration collection and validation
 collect_config() {
 
     # Check if .env exists and has all required variables
     if [ -f "$ENV_FILE" ] && check_all_required_vars; then
         info ".env file found with all required variables. Using existing configuration."
-        set -a; source "$ENV_FILE"; set +a
         return
     fi
     
@@ -1014,14 +1016,25 @@ deploy() {
     create_env_file
 
     info "Downloading container images from registry..."
-    if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
-        log "Images downloaded"
+    if [ -n "$CUSTOM_ENV_FILE" ]; then
+        if docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull; then
+            log "Images downloaded"
+        else
+            error "Container image download failed. Please verify network connectivity and registry access"
+        fi
+        
+        info "Initializing containerized services..."
+        docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
     else
-        error "Container image download failed. Please verify network connectivity and registry access"
+        if docker compose -f "$COMPOSE_FILE" pull; then
+            log "Images downloaded"
+        else
+            error "Container image download failed. Please verify network connectivity and registry access"
+        fi
+        
+        info "Initializing containerized services..."
+        docker compose -f "$COMPOSE_FILE" up -d
     fi
-    
-    info "Initializing containerized services..."
-    docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
     
     if ! docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
         error "Service initialization failed. Review deployment logs using: docker compose logs"
@@ -1298,11 +1311,6 @@ while [ $# -gt 0 ]; do
                 exit 1
             fi
 
-            set -a
-            source "$ENV_FILE"
-            set +a
-            log "Loaded custom environment from $ENV_FILE"
-
             shift
             ;;
         --development)
@@ -1357,10 +1365,6 @@ collect_config
 
 echo
 step "4/5: deployment"
-# Generate system passwords before deployment
-export AUTH_SECRET=$(generate_password)
-export GEL_PASSWORD=$(generate_password)
-export S3_SECRET_ACCESS_KEY=$(generate_password)
 deploy
 
 step "5/5: next steps"
