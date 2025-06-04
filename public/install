@@ -1036,16 +1036,33 @@ Then restart the deployment:
 
 # Show deployment information
 show_info() {
+    info "What was deployed:"
+    if [ "$DEV_MODE" = "true" ]; then
+        echo "  • TofuPilot development version"
+    else
+        echo "  • TofuPilot production version"
+    fi
+    if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
+        echo "  • Custom SSL certificates"
+    else
+        echo "  • Let's Encrypt SSL certificates"
+    fi
+    echo "  • TofuPilot database (Gel)"
+    echo "  • TofuPilot storage (MinIO)"
+    echo "  • TofuPilot proxy (Traefik)"
     echo
-    echo "========================================="
-    echo "    TofuPilot Deployment Complete!    "
-    echo "========================================="
-    echo
-    info "Your TofuPilot instance is accessible at:"
+    info "Your TofuPilot instance will be accessible at:"
     echo "  • Main app: https://${DOMAIN_NAME}"
     echo "  • Storage:  https://${STORAGE_DOMAIN_NAME}"
     echo
-    warn "Complete identity provider configuration:"
+    
+    warn "Database Migration Notice:"
+    echo "If this is your first TofuPilot installation, the database needs to migrate to"
+    echo "the latest schema version. This process may take up to 5 minutes."
+    echo "Monitor migration progress: curl -sSL ${INSTALLER_URL} | bash -s -- --logs app"
+    echo
+    
+    warn "Complete setup if not done already:"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
         echo "  • Google OAuth: Configure redirect URI:"
         echo "    https://${DOMAIN_NAME}/api/auth/callback/google"
@@ -1054,20 +1071,15 @@ show_info() {
         echo "  • Microsoft Entra ID: Configure redirect URI:"
         echo "    https://${DOMAIN_NAME}/api/auth/callback/microsoft-entra-id"
     fi
-    if [ -n "$EMAIL_SMTP_HOST" ]; then
-        echo "  • SMTP Authentication: Configured using ${EMAIL_SMTP_HOST}"
-    fi
+    echo "  • Configure firewall: https://tofupilot.com/self-hosting/firewall"
+    echo "  • Configure backups: https://tofupilot.com/self-hosting/backup"
     echo
-    info "Next steps:"
-    echo "  1. Complete authentication provider setup above"
-    echo "  2. If on cloud VM: Open ports 80/443 and point DNS to this server"
-    echo "  3. Access your TofuPilot instance at https://${DOMAIN_NAME}"
-    echo
-    info "Administrative commands:"
+    info "Management commands:"
+    echo "  • Check status: curl -sSL ${INSTALLER_URL} | bash -s -- --status"
     echo "  • View logs:    docker compose logs -f"
-    echo "  • Stop:         docker compose down"
     echo "  • Restart:      docker compose restart"
-    echo "  • Status:       curl -sSL ${INSTALLER_URL} | bash -s -- --status"
+    echo "  • Stop:         docker compose down"
+    echo "  • Start:        docker compose up -d"
     echo
 }
 
@@ -1133,63 +1145,6 @@ show_status() {
     echo "  Storage:  https://${STORAGE_DOMAIN_NAME:-storage.localhost}"
 }
 
-# Show logs
-show_logs() {
-    local service="$1"
-    
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    if [ -n "$service" ]; then
-        log "Showing logs for service: $service"
-        docker compose -f "$COMPOSE_FILE" logs -f --tail=100 "$service"
-    else
-        log "Showing logs for all services"
-        docker compose -f "$COMPOSE_FILE" logs -f --tail=100
-    fi
-}
-
-# Restart services
-restart_services() {
-    local service="$1"
-    
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    if [ -n "$service" ]; then
-        log "Restarting service: $service"
-        docker compose -f "$COMPOSE_FILE" restart "$service"
-    else
-        log "Restarting all services"
-        docker compose -f "$COMPOSE_FILE" restart
-    fi
-    
-    log "Restart complete"
-}
-
-# Stop services
-stop_services() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    log "Stopping all services..."
-    docker compose -f "$COMPOSE_FILE" down
-    log "All services stopped"
-}
-
-# Start services  
-start_services() {
-    if [ ! -f "$COMPOSE_FILE" ]; then
-        error "No deployment found."
-    fi
-    
-    log "Starting all services..."
-    docker compose -f "$COMPOSE_FILE" up -d
-    log "All services started"
-}
 
 # Uninstall TofuPilot completely
 uninstall_tofupilot() {
@@ -1263,28 +1218,22 @@ usage() {
     echo "Usage: curl -sSL ${INSTALLER_URL} | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
-    echo "  (no options)            Fresh TofuPilot installation (production)"
-    echo "  --development           Install development version (requires GitHub access)"
+    echo "  (no options)            Install/update production version"
+    echo "  --development           Install/update development version (requires GitHub access)"
     echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
     echo
     echo "Service Management:"
     echo "  --status                Show service status and health"
-    echo "  --logs [service]        Show logs (all services or specific)"
-    echo "  --restart [service]     Restart services (all or specific)"
-    echo "  --start                 Start all services"
-    echo "  --stop                  Stop all services"
-    echo
     echo "  --uninstall             Completely remove TofuPilot (with confirmation)"
     echo "  --help                  Show this help message"
     echo
     echo "Examples:"
-    echo "  curl -sSL ${INSTALLER_URL} | bash                    # Fresh installation (production)"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development # Development installation"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file /path/to/custom.env # Use existing env"
+    echo "  curl -sSL ${INSTALLER_URL} | bash                            # Install/update production"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development        # Install/update development"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env # Use existing env"
     echo
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status    # Check deployment status"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --logs app  # Show application logs"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall # Completely remove TofuPilot"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status             # Check deployment status"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall          # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
@@ -1330,22 +1279,6 @@ while [ $# -gt 0 ]; do
             show_status
             exit 0
             ;;
-        --logs)
-            show_logs "$2"
-            exit 0
-            ;;
-        --restart)
-            restart_services "$2"
-            exit 0
-            ;;
-        --stop)
-            stop_services
-            exit 0
-            ;;
-        --start)
-            start_services
-            exit 0
-            ;;
         --uninstall)
             uninstall_tofupilot
             exit 0
@@ -1388,7 +1321,7 @@ echo
 step "4/5: deployment"
 deploy
 
-step "5/5: complete"
+step "5/5: next steps"
 show_info
 
 
