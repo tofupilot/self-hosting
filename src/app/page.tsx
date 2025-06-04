@@ -33,23 +33,23 @@ export default function Page() {
         {/* Simple Navigation Links */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
           <Link
+            href="https://tofupilot.com/docs/self-hosting"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 hover:border-blue-400 transition-colors"
+          >
+            <div className="text-white font-bold">Self-Hosting Docs</div>
+            <div className="text-blue-400 text-sm">/docs/self-hosting</div>
+          </Link>
+
+          <Link
             href="https://tofupilot.com"
             target="_blank"
             rel="noopener noreferrer"
             className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 hover:border-lime-400 transition-colors"
           >
-            <div className="text-white font-bold">Main Platform</div>
+            <div className="text-white font-bold">Website</div>
             <div className="text-lime-400 text-sm">tofupilot.com</div>
-          </Link>
-
-          <Link
-            href="https://tofupilot.com/docs"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-zinc-950 border border-zinc-800 rounded-lg p-4 hover:border-blue-400 transition-colors"
-          >
-            <div className="text-white font-bold">Documentation</div>
-            <div className="text-blue-400 text-sm">tofupilot.com/docs</div>
           </Link>
 
           <Link
