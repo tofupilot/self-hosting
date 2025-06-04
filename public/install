@@ -650,6 +650,7 @@ EOF
     environment:
       - MINIO_ROOT_USER=${S3_ACCESS_KEY_ID}
       - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY}
+      - MINIO_BUCKETS=${S3_BUCKET_NAME}
     volumes:
       - tofupilot-storage-data:/data
     labels:
@@ -1062,22 +1063,6 @@ deploy() {
     
     log "Services started"
     
-    # Create storage bucket
-    info "Setting up storage bucket..."
-    sleep 5
-    
-    # Configure MinIO client and create bucket
-    if docker compose -f "$COMPOSE_FILE" exec -T tofupilot-storage sh -c "mc alias set local http://localhost:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; then
-        if docker compose -f "$COMPOSE_FILE" exec -T tofupilot-storage mc mb local/${S3_BUCKET_NAME} 2>/dev/null; then
-            log "Storage bucket '${S3_BUCKET_NAME}' created"
-        elif docker compose -f "$COMPOSE_FILE" exec -T tofupilot-storage mc ls local/${S3_BUCKET_NAME} >/dev/null 2>&1; then
-            log "Storage bucket '${S3_BUCKET_NAME}' already exists"
-        else
-            error "Failed to create storage bucket '${S3_BUCKET_NAME}'. Check MinIO container logs with: docker compose logs tofupilot-storage"
-        fi
-    else
-        error "Failed to configure MinIO client. Check storage service logs with: docker compose logs tofupilot-storage"
-    fi
     
     # Quick app check
     info "Checking application status..."
