@@ -947,14 +947,6 @@ load_config() {
     fi
     STORAGE_DOMAIN_NAME=$(prompt_env_with_default "STORAGE_DOMAIN_NAME" "Storage domain" "$storage_default" false)
     
-    # Auto-generate SSL email based on main domain  
-    local email_default="admin@${DOMAIN_NAME}"
-    local existing_email=$(get_env_value "SSL_LETSENCRYPT_EMAIL")
-    if [ -n "$existing_email" ]; then
-        email_default="$existing_email"
-    fi
-    SSL_LETSENCRYPT_EMAIL=$(prompt_env_with_default "SSL_LETSENCRYPT_EMAIL" "Let's Encrypt email" "$email_default" false)
-    
     echo
     echo "SSL Configuration:"
     info "Choose SSL certificate mode:"
@@ -987,6 +979,15 @@ load_config() {
     fi
     
     if [ "$SSL_MODE" = "letsencrypt" ]; then
+        echo
+        info "Let's Encrypt SSL configuration:"
+        # Auto-generate SSL email based on main domain  
+        local email_default="admin@${DOMAIN_NAME}"
+        local existing_email=$(get_env_value "SSL_LETSENCRYPT_EMAIL")
+        if [ -n "$existing_email" ]; then
+            email_default="$existing_email"
+        fi
+        SSL_LETSENCRYPT_EMAIL=$(prompt_env_with_default "SSL_LETSENCRYPT_EMAIL" "Let's Encrypt email" "$email_default" false)
         log "Let's Encrypt automatic SSL enabled"
     fi
 
