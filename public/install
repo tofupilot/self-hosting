@@ -156,17 +156,22 @@ check_all_required_vars() {
         has_auth=true
     fi
     
-    # Check SSL configuration if custom mode is specified
+    # Check SSL configuration - auto-detect custom mode from cert paths
     local ssl_mode=$(get_env_value "SSL_MODE")
+    local ssl_cert_path=$(get_env_value "SSL_CERT_PATH")
+    local ssl_key_path=$(get_env_value "SSL_KEY_PATH")
     local ssl_valid=true
-    if [ "$ssl_mode" = "custom" ]; then
-        local ssl_cert_path=$(get_env_value "SSL_CERT_PATH")
-        local ssl_key_path=$(get_env_value "SSL_KEY_PATH")
+    
+    # If certificate paths are provided, assume custom mode
+    if [ -n "$ssl_cert_path" ] || [ -n "$ssl_key_path" ]; then
         if [ -z "$ssl_cert_path" ] || [ -z "$ssl_key_path" ]; then
             ssl_valid=false
         elif [ ! -f "$ssl_cert_path" ] || [ ! -f "$ssl_key_path" ]; then
             ssl_valid=false
         fi
+    elif [ "$ssl_mode" = "custom" ]; then
+        # SSL_MODE=custom but no paths provided
+        ssl_valid=false
     fi
 
     if [ "$missing" = "false" ] && [ "$has_auth" = "true" ] && [ "$ssl_valid" = "true" ]; then
@@ -413,7 +418,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 EOF
 
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
     cat >> "$COMPOSE_FILE" <<EOF
       - ${SSL_CERT_PATH}:/certs/tls.crt:ro
       - ${SSL_KEY_PATH}:/certs/tls.key:ro
@@ -591,7 +596,7 @@ EOF
   fi
 
   # Create TLS configuration file for custom certificates
-  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] && [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
+  if [ "${SSL_MODE:-letsencrypt}" = "custom" ] || [ -n "${SSL_CERT_PATH:-}" ] && [ -n "${SSL_KEY_PATH:-}" ]; then
     create_traefik_tls_config
   fi
 
