@@ -1550,7 +1550,7 @@ uninstall_tofupilot() {
     echo
     warn "This will completely remove:"
     echo "- All TofuPilot containers"
-    echo "- All TofuPilot volumes (database data will be lost)"
+    echo "- All TofuPilot volumes (database and storage data will be lost)"
     echo "- Configuration files (.env, docker-compose.yml)"
     echo "- Docker images and unused volumes"
     echo
