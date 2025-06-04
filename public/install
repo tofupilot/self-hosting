@@ -864,9 +864,6 @@ collect_config() {
     
     if [ "$configure_smtp" != "n" ]; then
         EMAIL_SMTP_HOST=$(prompt_env "EMAIL_SMTP_HOST" "SMTP server hostname" false)
-        if [ -z "$EMAIL_SMTP_HOST" ]; then
-            EMAIL_SMTP_HOST="$existing_smtp_host"
-        fi
         if [ -z "$EMAIL_SMTP_HOST" ] && [ "$smtp_required" = "true" ]; then
             error "SMTP server hostname is required when no OAuth methods are configured"
         fi
