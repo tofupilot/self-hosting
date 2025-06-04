@@ -458,7 +458,12 @@ test_smtp_connection() {
     
     # If we have authentication details, test with a simple SMTP command
     if [ -n "$user" ] && [ -n "$password" ] && command_exists openssl; then
-        local smtp_test=$(timeout 10 openssl s_client -connect "$host:$port" -starttls smtp -quiet 2>/dev/null <<EOF
+        local smtp_test=""
+        local auth_success=false
+        
+        # Try STARTTLS first (ports 587, 25)
+        if [ "$port" = "587" ] || [ "$port" = "25" ]; then
+            smtp_test=$(timeout 10 openssl s_client -connect "$host:$port" -starttls smtp -quiet 2>/dev/null <<EOF
 EHLO localhost
 AUTH LOGIN
 $(echo -n "$user" | base64)
@@ -466,14 +471,52 @@ $(echo -n "$password" | base64)
 QUIT
 EOF
 )
-        if echo "$smtp_test" | grep -q "Authentication successful\|235"; then
+        # Try implicit SSL/TLS (port 465, 2525)
+        elif [ "$port" = "465" ] || [ "$port" = "2525" ]; then
+            smtp_test=$(timeout 10 openssl s_client -connect "$host:$port" -quiet 2>/dev/null <<EOF
+EHLO localhost
+AUTH LOGIN
+$(echo -n "$user" | base64)
+$(echo -n "$password" | base64)
+QUIT
+EOF
+)
+        else
+            # Unknown port, try STARTTLS first, then SSL
+            smtp_test=$(timeout 10 openssl s_client -connect "$host:$port" -starttls smtp -quiet 2>/dev/null <<EOF
+EHLO localhost
+AUTH LOGIN
+$(echo -n "$user" | base64)
+$(echo -n "$password" | base64)
+QUIT
+EOF
+)
+            if [ -z "$smtp_test" ] || echo "$smtp_test" | grep -q "connect:errno"; then
+                smtp_test=$(timeout 10 openssl s_client -connect "$host:$port" -quiet 2>/dev/null <<EOF
+EHLO localhost
+AUTH LOGIN
+$(echo -n "$user" | base64)
+$(echo -n "$password" | base64)
+QUIT
+EOF
+)
+            fi
+        fi
+        
+        # Check authentication result
+        if echo "$smtp_test" | grep -qi "235\|Authentication successful\|login ok"; then
             log "SMTP authentication successful"
             return 0
-        elif echo "$smtp_test" | grep -q "530\|535\|Authentication failed"; then
+        elif echo "$smtp_test" | grep -qi "530\|535\|Authentication failed\|invalid credentials\|login failed"; then
             warn "SMTP authentication failed - please verify credentials"
             return 1
+        elif echo "$smtp_test" | grep -qi "connect:errno\|connection refused\|network unreachable"; then
+            warn "Cannot establish SSL/TLS connection to SMTP server"
+            return 1
         else
+            # If we can't determine the auth result, just warn but don't fail
             warn "SMTP server accessible but authentication could not be verified"
+            info "This may be due to server-specific authentication requirements"
             return 0
         fi
     fi
