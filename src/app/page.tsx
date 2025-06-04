@@ -2,7 +2,7 @@ import Link from "next/link"
 import { CopyButton } from "./copy-button"
 
 export default function Page() {
-  const installCommand = "curl -fsSL https://tofupilot.sh/install | bash"
+  const deployCommand = "curl -fsSL https://tofupilot.sh/deploy | bash"
 
   return (
     <div className="min-h-screen bg-black text-lime-400 font-mono p-4 md:p-8 flex items-center justify-center">
@@ -19,11 +19,11 @@ export default function Page() {
         {/* Simple Terminal Box */}
         <div className="bg-zinc-950 border border-zinc-800 rounded-lg p-6 mb-8">
           <div className="space-y-4">
-            <div className="text-white text-lg">TofuPilot Self-Hosting Installer</div>
+            <div className="text-white text-lg">TofuPilot Self-Hosting Deployment</div>
 
             <div className="bg-zinc-900 rounded p-3 flex items-center justify-between">
-              <code className="text-white">$ {installCommand}</code>
-              <CopyButton text={installCommand} />
+              <code className="text-white">$ {deployCommand}</code>
+              <CopyButton text={deployCommand} />
             </div>
 
             <div className="text-zinc-400 text-sm">Deploy TofuPilot on your own infrastructure with one command.</div>
