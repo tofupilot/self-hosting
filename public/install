@@ -54,6 +54,25 @@ step(){
 command_exists(){ command -v "$1" >/dev/null 2>&1; }
 generate_password(){ openssl rand -base64 32 | tr -d "=+/" | cut -c1-25; }
 
+# Generate auto-generated variables that users should never configure
+generate_system_vars() {
+    # Auto-generated security credentials (cannot be overridden by user)
+    AUTH_SECRET=$(generate_password)
+    
+    # Auto-generated database configuration (cannot be overridden by user)  
+    GEL_USER="edgedb"
+    GEL_DATABASE="main"
+    GEL_HOST="tofupilot-database"
+    GEL_PORT="5656"
+    GEL_CLIENT_TLS_SECURITY="insecure"
+    GEL_PASSWORD=$(generate_password)
+    
+    # Auto-generated storage configuration (cannot be overridden by user)
+    S3_ACCESS_KEY_ID="tofupilot"
+    S3_BUCKET_NAME="tofupilot"
+    S3_SECRET_ACCESS_KEY=$(generate_password)
+}
+
 # Generate empty .env template
 generate_env_template() {
     local template_file="my-tofupilot-config.env"
@@ -595,7 +614,6 @@ EOF
       - S3_ENDPOINT_URL_EXTERNAL=https://${STORAGE_DOMAIN_NAME}
       - S3_ENDPOINT_URL_INTERNAL=http://tofupilot-storage:9000
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - S3_REGION=${S3_REGION}
       
       # Email Configuration
       - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-}
@@ -763,7 +781,6 @@ GEL_CLIENT_TLS_SECURITY=${GEL_CLIENT_TLS_SECURITY}
 S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
 S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
 S3_BUCKET_NAME=${S3_BUCKET_NAME}
-S3_REGION=${S3_REGION}
 
 # Email Configuration
 EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-}
@@ -848,24 +865,10 @@ collect_config() {
     echo "Security Configuration:"
     info "Generating secure passwords automatically..."
 
-    # Auto-generated security credentials (cannot be overridden by user)
-    AUTH_SECRET=$(generate_password)
+    # Generate system variables
+    generate_system_vars
     log "Generated authentication secret"
-
-    # Auto-generated database configuration (cannot be overridden by user)
-    GEL_USER="edgedb"
-    GEL_DATABASE="main"
-    GEL_HOST="tofupilot-database"
-    GEL_PORT="5656"
-    GEL_CLIENT_TLS_SECURITY="insecure"
-    GEL_PASSWORD=$(generate_password)
     log "Generated database credentials"
-
-    # Auto-generated storage configuration (cannot be overridden by user)
-    S3_ACCESS_KEY_ID="tofupilot"
-    S3_BUCKET_NAME="tofupilot"
-    S3_REGION="us-east-1"
-    S3_SECRET_ACCESS_KEY=$(generate_password)
     log "Generated storage credentials"
 
     echo
@@ -1391,6 +1394,8 @@ collect_config
 
 echo
 step "4/5: deployment"
+# Always generate system variables (passwords, database config, etc.)
+generate_system_vars
 deploy
 
 step "5/5: next steps"
