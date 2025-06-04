@@ -998,8 +998,9 @@ EOF
 # Always creates .env file for secrets storage, even with custom env files
 create_env_file() {
     if [ -n "$CUSTOM_ENV_FILE" ]; then
-        info "Creating .env file for auto-generated secrets (custom config: $CUSTOM_ENV_FILE)"
-        log "Your original config file remains untouched"
+        info "Creating .env file for deployment (custom config: $CUSTOM_ENV_FILE)"
+        log "Your original config file $CUSTOM_ENV_FILE remains untouched"
+        log "Deployment will use .env file with validated config + auto-generated secrets"
     else
         info "Creating environment file..."
         if [ -f "$ENV_FILE" ]; then
@@ -1020,7 +1021,8 @@ create_env_file() {
 # This file contains auto-generated passwords and secrets.
 # Deleting this file will cause service authentication failures.
 # The deployment script will reuse existing values when re-run.
-$([ -n "$CUSTOM_ENV_FILE" ] && echo "# User configuration loaded from: $CUSTOM_ENV_FILE")
+$([ -n "$CUSTOM_ENV_FILE" ] && echo "# User configuration loaded from: $CUSTOM_ENV_FILE (preserved)")
+$([ -n "$CUSTOM_ENV_FILE" ] && echo "# This .env file contains the final validated config + auto-generated secrets")
 
 # Domain Configuration
 DOMAIN_NAME=${DOMAIN_NAME}
@@ -1115,10 +1117,10 @@ load_config() {
     # Check if custom env file is specified or .env exists and load it
     if [ -n "$CUSTOM_ENV_FILE" ] || [ -f "$ENV_FILE" ]; then
         if [ -n "$CUSTOM_ENV_FILE" ]; then
-            info "Loading configuration from custom file: $ENV_FILE"
+            info "Loading configuration from custom file: $CUSTOM_ENV_FILE"
             # Custom env files are expected to be complete - load and return
             set -a
-            source "$ENV_FILE"
+            source "$CUSTOM_ENV_FILE"
             set +a
             CONFIG_FROM_FILE=true
             return
@@ -1641,8 +1643,7 @@ while [ $# -gt 0 ]; do
             shift
             CUSTOM_ENV_FILE="$1"
             [ ! -f "$CUSTOM_ENV_FILE" ] && error "Specified env file not found: $CUSTOM_ENV_FILE"
-            ENV_FILE="$CUSTOM_ENV_FILE"
-            info "Using custom env file: $ENV_FILE"
+            info "Using custom env file: $CUSTOM_ENV_FILE"
             shift
             ;;
         --development)
