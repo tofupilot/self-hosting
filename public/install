@@ -275,10 +275,10 @@ prompt_env() {
     fi
     
     if [ "$secret" = "true" ]; then
-        read -s user_input
+        read -s user_input </dev/tty
         echo >&2
     else
-        read user_input
+        read user_input </dev/tty
     fi
     
     # Use existing value if user pressed enter
@@ -305,10 +305,10 @@ prompt_env_with_default() {
     fi
     
     if [ "$secret" = "true" ]; then
-        read -s user_input
+        read -s user_input </dev/tty
         echo >&2
     else
-        read user_input
+        read user_input </dev/tty
     fi
     
     # Use default value if user pressed enter
@@ -528,7 +528,7 @@ github_auth() {
     echo
 
     echo -n "GitHub Personal Access Token: "
-    read -s github_token
+    read -s github_token </dev/tty
     echo
 
     if [ -z "$github_token" ]; then
@@ -1008,14 +1008,16 @@ load_config() {
     local existing_google_id=$(get_env_value "AUTH_GOOGLE_ID")
     if [ -n "$existing_google_id" ]; then
         printf "Configure Google OAuth? (existing: ${existing_google_id}) [Y/n]: " >&2
-        read configure_google
-        if [[ "$configure_google" =~ ^[Nn]$ ]]; then
+        read configure_google </dev/tty
+        echo >&2
+        if [ "$configure_google" = "n" ] || [ "$configure_google" = "N" ]; then
             configure_google="n"
         fi
     else
         printf "Configure Google OAuth? [y/N]: " >&2
-        read configure_google
-        if [[ ! "$configure_google" =~ ^[Yy]$ ]]; then
+        read configure_google </dev/tty
+        echo >&2
+        if [ "$configure_google" != "y" ] && [ "$configure_google" != "Y" ]; then
             configure_google="n"
         fi
     fi
@@ -1037,14 +1039,16 @@ load_config() {
     local existing_microsoft_id=$(get_env_value "AUTH_MICROSOFT_ENTRA_ID_ID")
     if [ -n "$existing_microsoft_id" ]; then
         printf "Configure Microsoft Entra ID? (existing: ${existing_microsoft_id}) [Y/n]: " >&2
-        read configure_microsoft
-        if [[ "$configure_microsoft" =~ ^[Nn]$ ]]; then
+        read configure_microsoft </dev/tty
+        echo >&2
+        if [ "$configure_microsoft" = "n" ] || [ "$configure_microsoft" = "N" ]; then
             configure_microsoft="n"
         fi
     else
         printf "Configure Microsoft Entra ID? [y/N]: " >&2
-        read configure_microsoft
-        if [[ ! "$configure_microsoft" =~ ^[Yy]$ ]]; then
+        read configure_microsoft </dev/tty
+        echo >&2
+        if [ "$configure_microsoft" != "y" ] && [ "$configure_microsoft" != "Y" ]; then
             configure_microsoft="n"
         fi
     fi
@@ -1097,14 +1101,16 @@ load_config() {
         configure_smtp="y"
     elif [ -n "$existing_smtp_host" ]; then
         printf "Configure SMTP email? (existing: ${existing_smtp_host}) [Y/n]: " >&2
-        read configure_smtp
-        if [[ "$configure_smtp" =~ ^[Nn]$ ]]; then
+        read configure_smtp </dev/tty
+        echo >&2
+        if [ "$configure_smtp" = "n" ] || [ "$configure_smtp" = "N" ]; then
             configure_smtp="n"
         fi
     else
         printf "Configure SMTP email? [y/N]: " >&2
-        read configure_smtp
-        if [[ ! "$configure_smtp" =~ ^[Yy]$ ]]; then
+        read configure_smtp </dev/tty
+        echo >&2
+        if [ "$configure_smtp" != "y" ] && [ "$configure_smtp" != "Y" ]; then
             configure_smtp="n"
         fi
     fi
@@ -1138,6 +1144,7 @@ load_config() {
             
             # Test SMTP connection right after configuration
             echo
+            info "Testing SMTP connection with host: '$EMAIL_SMTP_HOST', port: '$EMAIL_SMTP_PORT'"
             test_smtp_connection "$EMAIL_SMTP_HOST" "$EMAIL_SMTP_PORT" "$EMAIL_SMTP_USER" "$EMAIL_SMTP_PASSWORD"
         else
             EMAIL_SMTP_PORT="587"
@@ -1364,7 +1371,7 @@ uninstall_tofupilot() {
     echo
     
     printf "${RED}Are you sure you want to completely uninstall TofuPilot? (y/N): ${NC}"
-    read -r confirm
+    read -r confirm </dev/tty
     if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
         echo "Uninstall cancelled."
         exit 0
@@ -1372,7 +1379,7 @@ uninstall_tofupilot() {
     
     echo
     printf "${RED}This action is IRREVERSIBLE. Type 'DELETE' to confirm: ${NC}"
-    read -r final_confirm
+    read -r final_confirm </dev/tty
     if [ "$final_confirm" != "DELETE" ]; then
         echo "Uninstall cancelled."
         exit 0
