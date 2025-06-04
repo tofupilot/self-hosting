@@ -1275,24 +1275,24 @@ usage() {
     echo "Usage: curl -sSL ${INSTALLER_URL} | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
-    echo "  (no options)            Install/update production version"
-    echo "  --development           Install/update development version (requires GitHub access)"
-    echo "  --env-file <path>       Use a custom .env file (must contain all required variables)"
-    echo "  --generate-env          Generate empty .env template file"
+    echo "  (no options)              Install/update production version"
+    echo "  --development             Install/update development version (requires GitHub access)"
+    echo "  --env-file <path>         Use a custom .env file (must contain all required variables)"
+    echo "  --generate-env            Generate empty .env template file"
     echo
     echo "Service Management:"
-    echo "  --status                Show service status and health"
-    echo "  --uninstall             Completely remove TofuPilot (with confirmation)"
-    echo "  --help                  Show this help message"
+    echo "  --status                  Show service status and health"
+    echo "  --uninstall               Completely remove TofuPilot (with confirmation)"
+    echo "  --help                    Show this help message"
     echo
     echo "Examples:"
-    echo "  curl -sSL ${INSTALLER_URL} | bash                            # Install/update production"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development        # Install/update development"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env # Use existing env"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --generate-env       # Generate .env template"
+    echo "  curl -sSL ${INSTALLER_URL} | bash                              # Install/update production"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development          # Install/update development"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env  # Use existing env"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --generate-env         # Generate .env template"
     echo
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status             # Check deployment status"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall          # Completely remove TofuPilot"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --status               # Check deployment status"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall            # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
