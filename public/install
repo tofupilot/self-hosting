@@ -763,6 +763,8 @@ EOF
       - "443:443"
     environment:
       - SSL_LETSENCRYPT_EMAIL=${SSL_LETSENCRYPT_EMAIL}
+    networks:
+      - tofupilot
 
   # TofuPilot Application
   tofupilot-app:
@@ -831,11 +833,15 @@ EOF
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls=true"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
+    networks:
+      - tofupilot
 EOF
   else
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-app.tls.certresolver=letsencrypt"
       - "traefik.http.services.tofupilot-app.loadbalancer.server.port=3000"
+    networks:
+      - tofupilot
 EOF
   fi
 
@@ -857,6 +863,8 @@ EOF
       - tofupilot-database-data:/var/lib/gel/data
     ports:
       - "127.0.0.1:5656:5656"
+    networks:
+      - tofupilot
 
   # Object Storage (MinIO)
   tofupilot-storage:
@@ -881,11 +889,15 @@ EOF
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls=true"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
+    networks:
+      - tofupilot
 EOF
   else
     cat >> "$COMPOSE_FILE" <<EOF
       - "traefik.http.routers.tofupilot-storage.tls.certresolver=letsencrypt"
       - "traefik.http.services.tofupilot-storage.loadbalancer.server.port=9000"
+    networks:
+      - tofupilot
 EOF
   fi
 
@@ -894,6 +906,14 @@ EOF
 volumes:
   tofupilot-database-data:
   tofupilot-storage-data:
+EOF
+
+  # Add networks section
+  cat >> "$COMPOSE_FILE" <<'EOF'
+
+networks:
+  tofupilot:
+    driver: bridge
 EOF
 
   if [ "${SSL_MODE:-letsencrypt}" = "letsencrypt" ]; then
@@ -1376,22 +1396,20 @@ deploy() {
 show_info() {
     info "What was deployed:"
     if [ "$DEV_MODE" = "true" ]; then
-        echo "  • TofuPilot development version"
+        echo "  • TofuPilot app (dev)"
     else
-        echo "  • TofuPilot production version"
+        echo "  • TofuPilot app"
     fi
+    echo "  • TofuPilot database (Gel)"
+    echo "  • TofuPilot storage (MinIO)"
+    echo "  • TofuPilot proxy (Traefik)"
     if [ "${SSL_MODE:-letsencrypt}" = "custom" ]; then
         echo "  • Custom SSL certificates"
     else
         echo "  • Let's Encrypt SSL certificates"
     fi
-    echo "  • TofuPilot database (Gel)"
-    echo "  • TofuPilot storage (MinIO)"
-    echo "  • TofuPilot proxy (Traefik)"
     echo
-    info "Your TofuPilot instance will be accessible at:"
-    echo "  • Main app: https://${DOMAIN_NAME}"
-    echo "  • Storage:  https://${STORAGE_DOMAIN_NAME}"
+    info "Your TofuPilot instance will be accessible at: https://${DOMAIN_NAME}"
     echo
     
     warn "Database Migration Notice:"
