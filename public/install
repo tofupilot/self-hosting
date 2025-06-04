@@ -442,7 +442,7 @@ EOF
       - tofupilot-storage
     environment:
       # Domain Configuration
-      - SELF_HOSTED_APP_URL=https://${DOMAIN_NAME}
+      - NEXT_PUBLIC_SELF_HOSTED_APP_URL=https://${DOMAIN_NAME}
       
       # Authentication Configuration
       - AUTH_SECRET=${AUTH_SECRET}
