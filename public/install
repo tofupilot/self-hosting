@@ -65,12 +65,16 @@ generate_env_template() {
 # Domain Configuration
 DOMAIN_NAME=
 STORAGE_DOMAIN_NAME=
-ACME_EMAIL=
 
 # SSL Configuration
+# Case 1: Let's Encrypt (automatic SSL certificates)
 SSL_MODE=letsencrypt
-SSL_CERT_PATH=
-SSL_KEY_PATH=
+ACME_EMAIL=your-email@example.com
+
+# Case 2: Custom SSL certificates (uncomment and set paths)
+# SSL_MODE=custom
+# SSL_CERT_PATH=/path/to/your/certificate.crt
+# SSL_KEY_PATH=/path/to/your/private.key
 
 # Authentication Configuration
 AUTH_SECRET=
