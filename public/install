@@ -716,33 +716,24 @@ create_compose_file() {
     info "Removed existing docker-compose.yml file"
   fi
   
-  # Generate or reuse passwords for this deployment (must be exported for template)
-  # Check if passwords already exist in .env file, generate only if missing
-  info "Checking for existing passwords in configuration files..."
-  
-  export AUTH_SECRET=$(get_env_value "AUTH_SECRET")
+  # Load existing passwords if they exist, generate only if missing
+  AUTH_SECRET=$(get_env_value "AUTH_SECRET")
   if [ -z "$AUTH_SECRET" ]; then
-    export AUTH_SECRET=$(generate_password)
-    info "Generated new AUTH_SECRET"
-  else
-    info "Using existing AUTH_SECRET (first 8 chars: ${AUTH_SECRET:0:8}...)"
+    AUTH_SECRET=$(generate_password)
   fi
+  export AUTH_SECRET
   
-  export GEL_PASSWORD=$(get_env_value "GEL_PASSWORD")
+  GEL_PASSWORD=$(get_env_value "GEL_PASSWORD")
   if [ -z "$GEL_PASSWORD" ]; then
-    export GEL_PASSWORD=$(generate_password)
-    info "Generated new GEL_PASSWORD"
-  else
-    info "Using existing GEL_PASSWORD (first 8 chars: ${GEL_PASSWORD:0:8}...)"
+    GEL_PASSWORD=$(generate_password)
   fi
+  export GEL_PASSWORD
   
-  export S3_SECRET_ACCESS_KEY=$(get_env_value "S3_SECRET_ACCESS_KEY")
+  S3_SECRET_ACCESS_KEY=$(get_env_value "S3_SECRET_ACCESS_KEY")
   if [ -z "$S3_SECRET_ACCESS_KEY" ]; then
-    export S3_SECRET_ACCESS_KEY=$(generate_password)
-    info "Generated new S3_SECRET_ACCESS_KEY"
-  else
-    info "Using existing S3_SECRET_ACCESS_KEY (first 8 chars: ${S3_SECRET_ACCESS_KEY:0:8}...)"
+    S3_SECRET_ACCESS_KEY=$(generate_password)
   fi
+  export S3_SECRET_ACCESS_KEY
 
   cat > "$COMPOSE_FILE" <<EOF
 
@@ -1008,6 +999,9 @@ create_env_file() {
         fi
     fi
     
+    # Use the passwords that were already generated/loaded in create_compose_file()
+    # The variables AUTH_SECRET, GEL_PASSWORD, S3_SECRET_ACCESS_KEY are already exported
+    
     cat > "$ENV_FILE" <<EOF
 # ==========================================
 # TofuPilot Self-Hosting Configuration
@@ -1053,8 +1047,13 @@ EOF
 
 
 # Save current configuration variables to .env file during interactive setup
-# Partial config excludes auto-generated secrets since full .env is saved before docker commands
+# Preserves existing auto-generated secrets to prevent regeneration
 save_partial_config() {
+    # Preserve existing secrets if they exist
+    local existing_auth_secret=$(get_env_value "AUTH_SECRET")
+    local existing_gel_password=$(get_env_value "GEL_PASSWORD")
+    local existing_s3_secret=$(get_env_value "S3_SECRET_ACCESS_KEY")
+    
     cat > "$ENV_FILE" <<EOF
 # ==========================================
 # TofuPilot Self-Hosting Configuration
@@ -1086,6 +1085,17 @@ EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
 EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
 EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
 EOF
+
+    # Append existing secrets if they exist
+    if [ -n "$existing_auth_secret" ] || [ -n "$existing_gel_password" ] || [ -n "$existing_s3_secret" ]; then
+        cat >> "$ENV_FILE" <<EOF
+
+# Auto-generated secrets (DO NOT MODIFY - generated automatically by installer)
+${existing_auth_secret:+AUTH_SECRET=$existing_auth_secret}
+${existing_gel_password:+GEL_PASSWORD=$existing_gel_password}
+${existing_s3_secret:+S3_SECRET_ACCESS_KEY=$existing_s3_secret}
+EOF
+    fi
 }
 
 # Configuration loading (from file or interactive)
