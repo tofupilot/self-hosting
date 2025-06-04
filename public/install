@@ -799,7 +799,14 @@ EOF
       - AUTH_MICROSOFT_ENTRA_ID_SECRET=${AUTH_MICROSOFT_ENTRA_ID_SECRET:-}
       - AUTH_MICROSOFT_ENTRA_ID_ISSUER=${AUTH_MICROSOFT_ENTRA_ID_ISSUER:-}
       
-      # Database Configuration (hardcoded)
+      # Email Configuration
+      - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-}
+      - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
+      - EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
+      - EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
+      - EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
+      
+      # Database Configuration (automatic)
       - GEL_USER=edgedb
       - GEL_PASSWORD=${GEL_PASSWORD}
       - GEL_DATABASE=main
@@ -807,19 +814,13 @@ EOF
       - GEL_PORT=5656
       - GEL_CLIENT_TLS_SECURITY=insecure
       
-      # Storage Configuration (hardcoded)
+      # Storage Configuration (automatic)
       - S3_ACCESS_KEY_ID=tofupilot
       - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
       - S3_ENDPOINT_URL_EXTERNAL=https://${STORAGE_DOMAIN_NAME}
       - S3_ENDPOINT_URL_INTERNAL=http://tofupilot-storage:9000
       - S3_BUCKET_NAME=tofupilot
       
-      # Email Configuration
-      - EMAIL_SMTP_HOST=${EMAIL_SMTP_HOST:-}
-      - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
-      - EMAIL_SMTP_USER=${EMAIL_SMTP_USER:-}
-      - EMAIL_SMTP_PASSWORD=${EMAIL_SMTP_PASSWORD:-}
-      - EMAIL_FROM_AUTH=${EMAIL_FROM_AUTH:-}
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.tofupilot-app.rule=Host(\`${DOMAIN_NAME}\`)"
@@ -872,7 +873,7 @@ EOF
       - tofupilot-storage-data:/data
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.tofupilot-storage.rule=Host(`${STORAGE_DOMAIN_NAME}`)"
+      - "traefik.http.routers.tofupilot-storage.rule=Host(\`${STORAGE_DOMAIN_NAME}\`)"
       - "traefik.http.routers.tofupilot-storage.entrypoints=websecure"
 EOF
 
@@ -1552,7 +1553,7 @@ uninstall_tofupilot() {
     log "TofuPilot completely uninstalled!"
     echo
     echo "To reinstall TofuPilot, run:"
-    echo "  bash <(curl -s https://raw.githubusercontent.com/tofupilot/self-hosting/main/deploy.sh)"
+    echo "  curl -sSL ${INSTALLER_URL} | bash"
     echo
 }
 
@@ -1643,7 +1644,6 @@ if [ "$DEV_MODE" = "true" ]; then
     info "Development mode enabled - using private repository"
     github_auth
 else
-    info "Production mode - using public repository"
     verify_image_access
 fi
 
