@@ -1493,7 +1493,7 @@ show_info() {
     echo
     
     info "Next steps:"
-    echo "  • Monitor app deployment: docker compose logs -f app"
+    echo "  • Monitor app deployment: docker compose logs -f"
     echo "  • Your app will be available at: https://${DOMAIN_NAME}"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
         echo "  • Configure Google OAuth redirect URI:"
