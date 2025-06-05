@@ -831,6 +831,10 @@ EOF
     depends_on:
       - tofupilot-database
       - tofupilot-storage
+    volumes:
+      - next-image-cache:/app/.next/cache/images
+    # Make sure the container runs as the same user who owns the directory
+    user: node
     environment:
       # Domain Configuration
       - NEXT_PUBLIC_SELF_HOSTED_APP_URL=https://${DOMAIN_NAME}
@@ -1448,7 +1452,7 @@ deploy() {
     if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
         log "Application is running"
     else
-        warn "Application initialization in progress. Monitor with: docker compose logs app"
+        warn "Application initialization in progress. Monitor with: docker compose logs"
     fi
     
     # Check if services are running
