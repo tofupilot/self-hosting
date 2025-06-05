@@ -832,7 +832,7 @@ EOF
       - tofupilot-database
       - tofupilot-storage
     volumes:
-      - tofupilot-cache-data:/app/.next/cache/images
+      - tofupilot-image-cache-data:/app/.next/cache/images
     # Make sure the container runs as the same user who owns the directory
     user: node
     environment:
@@ -956,7 +956,7 @@ networks:
 volumes:
   tofupilot-database-data:
   tofupilot-storage-data:
-  tofupilot-cache-data:
+  tofupilot-image-cache-data:
 EOF
 
   # Add ACME volume if using Let's Encrypt
