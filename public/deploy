@@ -1448,7 +1448,7 @@ deploy() {
     if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
         log "Application is running"
     else
-        warn "Application initialization in progress. Monitor with: docker compose logs app"
+        warn "Application initialization in progress. Monitor with: docker compose logs"
     fi
     
     # Check if services are running
