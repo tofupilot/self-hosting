@@ -1443,22 +1443,6 @@ deploy() {
     fi
     log "Services started"
 
-    # Wait for MinIO health to be ready
-    info "Waiting for MinIO (tofupilot-storage) to be ready..."
-    until docker exec tofupilot-storage curl -sf http://localhost:9000/minio/health/ready >/dev/null; do
-    sleep 2
-    done
-    log "MinIO is ready"
-
-    # Ensure the bucket exists
-    info "Creating S3 bucket if needed..."
-    docker exec tofupilot-storage sh -c "
-    mc alias set local http://localhost:9000 $MINIO_ROOT_USER $MINIO_ROOT_PASSWORD && \
-    mc ls local/tofupilot >/dev/null 2>&1 || mc mb -p local/tofupilot
-    "
-    log "MinIO bucket ensured"
-
-
     # Quick app check
     info "Checking application status..."
     if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
