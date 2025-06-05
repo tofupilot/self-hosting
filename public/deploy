@@ -253,7 +253,7 @@ EOF
     echo
     info "Next steps:"
     echo "  1. Edit it: nano $template_file"
-    echo "  2. Run script: curl -sSL ${INSTALLER_URL} | bash -s -- --env-file $template_file"
+    echo "  2. Run script: curl -sSL ${INSTALLER_URL} | bash -s -- --load-env-path $template_file"
 }
 
 # Retrieve environment variable value from .env files
@@ -919,7 +919,6 @@ EOF
     environment:
       - MINIO_ROOT_USER=tofupilot
       - MINIO_ROOT_PASSWORD=${S3_SECRET_ACCESS_KEY}
-      - MINIO_BUCKETS=tofupilot
     volumes:
       - tofupilot-storage-data:/data
     labels:
@@ -999,8 +998,9 @@ EOF
 # Always creates .env file for secrets storage, even with custom env files
 create_env_file() {
     if [ -n "$CUSTOM_ENV_FILE" ]; then
-        info "Creating .env file for auto-generated secrets (custom config: $CUSTOM_ENV_FILE)"
-        log "Your original config file remains untouched"
+        info "Creating .env file for deployment (custom config: $CUSTOM_ENV_FILE)"
+        log "Your original config file $CUSTOM_ENV_FILE remains untouched"
+        log "Deployment will use .env file with validated config + auto-generated secrets"
     else
         info "Creating environment file..."
         if [ -f "$ENV_FILE" ]; then
@@ -1021,7 +1021,8 @@ create_env_file() {
 # This file contains auto-generated passwords and secrets.
 # Deleting this file will cause service authentication failures.
 # The deployment script will reuse existing values when re-run.
-$([ -n "$CUSTOM_ENV_FILE" ] && echo "# User configuration loaded from: $CUSTOM_ENV_FILE")
+$([ -n "$CUSTOM_ENV_FILE" ] && echo "# User configuration loaded from: $CUSTOM_ENV_FILE (preserved)")
+$([ -n "$CUSTOM_ENV_FILE" ] && echo "# This .env file contains the final validated config + auto-generated secrets")
 
 # Domain Configuration
 DOMAIN_NAME=${DOMAIN_NAME}
@@ -1116,10 +1117,10 @@ load_config() {
     # Check if custom env file is specified or .env exists and load it
     if [ -n "$CUSTOM_ENV_FILE" ] || [ -f "$ENV_FILE" ]; then
         if [ -n "$CUSTOM_ENV_FILE" ]; then
-            info "Loading configuration from custom file: $ENV_FILE"
+            info "Loading configuration from custom file: $CUSTOM_ENV_FILE"
             # Custom env files are expected to be complete - load and return
             set -a
-            source "$ENV_FILE"
+            source "$CUSTOM_ENV_FILE"
             set +a
             CONFIG_FROM_FILE=true
             return
@@ -1436,13 +1437,12 @@ deploy() {
     info "Initializing containerized services..."
     docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
     
-    if ! docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -q "Up"; then
-        error "Service initialization failed. Review deployment logs using: docker compose logs"
+    # Basic check for container state
+    if ! docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+        error "Service initialization failed. Review logs using: docker compose logs"
     fi
-    
     log "Services started"
-    
-    
+
     # Quick app check
     info "Checking application status..."
     if docker compose -f "$COMPOSE_FILE" ps app 2>/dev/null | grep -q "Up"; then
@@ -1493,7 +1493,7 @@ show_info() {
     echo
     
     info "Next steps:"
-    echo "  • Monitor app deployment: docker compose logs -f app"
+    echo "  • Monitor app deployment: docker compose logs -f"
     echo "  • Your app will be available at: https://${DOMAIN_NAME}"
     if [ -n "$AUTH_GOOGLE_ID" ]; then
         echo "  • Configure Google OAuth redirect URI:"
@@ -1590,22 +1590,22 @@ usage() {
     echo "Usage: curl -sSL ${INSTALLER_URL} | bash -s -- [OPTIONS]"
     echo
     echo "Main Commands:"
-    echo "  (no options)              Deploy/update production version"
-    echo "  --development             Deploy/update development version (requires GitHub access)"
-    echo "  --env-file <path>         Use a custom .env file (must contain all required variables)"
-    echo "  --generate-env            Generate empty .env template file"
+    echo "  (no options)                     Deploy/update production version"
+    echo "  --development                    Deploy/update development version (requires GitHub access)"
+    echo "  --load-env-path <path>           Use a custom .env file (must contain all required variables)"
+    echo "  --generate-env-template          Generate empty .env template file"
     echo
     echo "Service Management:"
-    echo "  --uninstall               Completely remove TofuPilot (with confirmation)"
-    echo "  --help                    Show this help message"
+    echo "  --uninstall                      Completely remove TofuPilot (with confirmation)"
+    echo "  --help                           Show this help message"
     echo
     echo "Examples:"
-    echo "  curl -sSL ${INSTALLER_URL} | bash                              # Deploy/update production"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development          # Deploy/update development"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --env-file custom.env  # Use existing env"
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --generate-env         # Generate .env template"
+    echo "  curl -sSL ${INSTALLER_URL} | bash                                   # Deploy/update production"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --development               # Deploy/update development"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --load-env-path custom.env  # Use existing env"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --generate-env-template     # Generate .env template"
     echo
-    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall            # Completely remove TofuPilot"
+    echo "  curl -sSL ${INSTALLER_URL} | bash -s -- --uninstall                 # Completely remove TofuPilot"
     echo
     echo "For more information, visit: https://docs.tofupilot.com"
 }
@@ -1623,19 +1623,18 @@ show_banner
 # Parse command line arguments
 while [ $# -gt 0 ]; do
     case "${1:-}" in
-        --env-file)
+        --load-env-path)
             shift
             CUSTOM_ENV_FILE="$1"
             [ ! -f "$CUSTOM_ENV_FILE" ] && error "Specified env file not found: $CUSTOM_ENV_FILE"
-            ENV_FILE="$CUSTOM_ENV_FILE"
-            info "Using custom env file: $ENV_FILE"
+            info "Using custom env file: $CUSTOM_ENV_FILE"
             shift
             ;;
         --development)
             DEV_MODE="true"
             shift
             ;;
-        --generate-env)
+        --generate-env-template)
             generate_env_template
             exit 0
             ;;
