@@ -831,10 +831,6 @@ EOF
     depends_on:
       - tofupilot-database
       - tofupilot-storage
-    volumes:
-      - tofupilot-image-cache-data:/app/.next/cache/images
-    # Make sure the container runs as the same user who owns the directory
-    user: node
     environment:
       # Domain Configuration
       - NEXT_PUBLIC_SELF_HOSTED_APP_URL=https://${DOMAIN_NAME}
@@ -956,7 +952,6 @@ networks:
 volumes:
   tofupilot-database-data:
   tofupilot-storage-data:
-  tofupilot-image-cache-data:
 EOF
 
   # Add ACME volume if using Let's Encrypt
